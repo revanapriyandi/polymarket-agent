@@ -4,28 +4,25 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { defaultRisk, ProviderConfigSchema, ProviderSecretsSchema, AssignmentSchema, SettingsSchema, ProviderProtocolSchema, type Settings as SettingsType, type ProviderConfig, type ProviderView, type ModelAssignment } from '../../../packages/shared/src/index';
 import { api, money } from './api';
 import { settingLabel as label, providerLabels, providerEndpointHint } from './settings-labels';
-import { Drawer } from './Drawer';
 import { Services } from './Services';
 import { SettingsHelp } from './SettingsHelp';
-import { settingsTabs, type SettingsTab } from './settings-help';
+import { type SettingsTab } from './settings-help';
 type SettingsResponse = {
     settings: SettingsType;
     version: number;
     assignments: ModelAssignment[];
 };
 export type SecureWrite = (path: string, body: unknown, method?: string) => Promise<unknown>;
-export function Settings({ onClose, secure }: {
-    onClose: () => void;
+export function Settings({ tab, secure }: {
+    tab: SettingsTab;
     secure: SecureWrite;
 }) {
-    const [tab, setTab] = useState<SettingsTab>('Risiko');
     const [helpOpen, setHelpOpen] = useState(false);
     const helpButton = useRef<HTMLButtonElement>(null);
     const [error, setError] = useState('');
     const [message, setMessage] = useState('');
     const query = useQuery({ queryKey: ['settings'], queryFn: () => api<SettingsResponse>('/settings') });
-    return <Drawer title="Pengaturan operasi" onClose={onClose}>
-        <div className="tabs">{settingsTabs.map(t => <button className={tab === t ? 'selected' : ''} key={t} onClick={() => setTab(t)}>{t}</button>)}</div>
+    return <section className="panel settings-page">
         <div className="settings-help-bar"><span>Butuh petunjuk untuk {tab.toLowerCase()}?</span><button ref={helpButton} onClick={() => setHelpOpen(true)}><CircleHelp size={16}/>Cara mengisi</button></div>
         {error && <p className="error" role="alert">{error}</p>}{message && <p className="success" role="status">{message}</p>}
         {query.isPending ? <p className="empty">Memuat pengaturan…</p> : query.error ? <p className="error">{query.error.message}</p> : query.data && <>
@@ -35,7 +32,7 @@ export function Settings({ onClose, secure }: {
             {tab === 'Wallet' && <Wallet key={query.data.version} data={query.data} secure={secure}/>}
         </>}
         {helpOpen && <SettingsHelp topic={tab} onClose={() => setHelpOpen(false)} returnFocusRef={helpButton}/>}
-    </Drawer>;
+    </section>;
 }
 function RiskForm({ data, secure, report, error }: {
     data: SettingsResponse;

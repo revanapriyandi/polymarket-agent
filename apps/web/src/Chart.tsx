@@ -2,24 +2,27 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { AreaSeries, ColorType, createChart, createSeriesMarkers, type UTCTimestamp, type SeriesMarker, type IChartApi, type ISeriesApi, type ISeriesMarkersPluginApi, type Time } from 'lightweight-charts';
 import type { EquityPoint, Mode, TablePage } from '../../../packages/shared/src/index';
-import { api, collateral } from './api';
+import { api, collateral, percent } from './api';
+type ChartMetric = 'equity' | 'pnl' | 'drawdown';
+const metricLabels: Record<ChartMetric, string> = { equity: 'Ekuitas', pnl: 'P&L bersih', drawdown: 'Drawdown' };
 export function EquityChart({ points, mode }: {
     points: EquityPoint[];
     mode: Mode;
 }) {
     const container = useRef<HTMLDivElement>(null);
     const [range, setRange] = useState('ALL');
+    const [metric, setMetric] = useState<ChartMetric>('equity');
     const [hover, setHover] = useState<number | null>(null);
     const orders = useQuery({ queryKey: ['chart-orders', mode], queryFn: () => api<TablePage>('/table/orders?page=1&pageSize=100&search=&status='), refetchInterval: 30000 });
     const instance = useRef<{ chart: IChartApi; series: ISeriesApi<'Area'>; markers: ISeriesMarkersPluginApi<Time> } | null>(null);
-    const plotted = useRef<EquityPoint[]>([]);
-    const viewport = useRef<{ mode: Mode; range: string; loaded: boolean } | null>(null);
+    const plotted = useRef<{ time: number; value: number }[]>([]);
+    const viewport = useRef<{ mode: Mode; range: string; metric: ChartMetric; loaded: boolean } | null>(null);
     const actual = useMemo(() => {
         const seconds = range === '24H' ? 86400 : range === '7D' ? 604800 : range === '30D' ? 2592000 : Infinity;
-        const valid = points.filter(p => Number.isFinite(p.time) && p.time >= 0 && Number.isFinite(p.equity));
+        const valid = points.filter(p => Number.isFinite(p.time) && p.time >= 0 && Number.isFinite(p[metric]));
         const latest = valid.reduce((time, point) => Math.max(time, point.time), 0);
-        return [...new Map(valid.filter(p => p.time >= latest - seconds).map(p => [Math.floor(p.time), { ...p, time: Math.floor(p.time) }])).values()].sort((a, b) => a.time - b.time);
-    }, [points, range]);
+        return [...new Map(valid.filter(p => p.time >= latest - seconds).map(p => [Math.floor(p.time), { value: p[metric], time: Math.floor(p.time) }])).values()].sort((a, b) => a.time - b.time);
+    }, [points, range, metric]);
     useEffect(() => {
         if (!container.current) return;
         const chart = createChart(container.current, { autoSize: true, height: 320, layout: { background: { type: ColorType.Solid, color: '#12191c' }, textColor: '#839499', fontFamily: 'Consolas, monospace' }, grid: { vertLines: { color: '#ffffff04' }, horzLines: { color: '#ffffff08' } }, rightPriceScale: { borderColor: '#263337' }, timeScale: { borderColor: '#263337', timeVisible: true, shiftVisibleRangeOnNewBar: false }, crosshair: { vertLine: { color: '#54d6b9' }, horzLine: { color: '#54d6b9' } } });
@@ -33,23 +36,24 @@ export function EquityChart({ points, mode }: {
         const current = instance.current;
         if (!current) return;
         const previous = viewport.current;
-        const reset = !previous?.loaded || previous.mode !== mode || previous.range !== range;
+        const reset = !previous?.loaded || previous.mode !== mode || previous.range !== range || previous.metric !== metric;
+        current.series.applyOptions({ priceFormat: metric === 'drawdown' ? { type: 'custom', minMove: .0001, formatter: (value: number) => percent(value) } : { type: 'price', precision: 2, minMove: .01 }, lineColor: metric === 'drawdown' ? '#e2ba70' : '#54d6b9', topColor: metric === 'drawdown' ? '#e2ba702b' : '#54d6b92b', bottomColor: '#54d6b902' });
         const visible = current.chart.timeScale().getVisibleRange();
         const previousPoints = plotted.current;
-        const canUpdate = !reset && previousPoints.length > 0 && actual.length >= previousPoints.length && previousPoints.slice(0, -1).every((point, index) => point.time === actual[index].time && point.equity === actual[index].equity) && previousPoints.at(-1)!.time === actual[previousPoints.length - 1].time;
+        const canUpdate = !reset && previousPoints.length > 0 && actual.length >= previousPoints.length && previousPoints.slice(0, -1).every((point, index) => point.time === actual[index].time && point.value === actual[index].value) && previousPoints.at(-1)!.time === actual[previousPoints.length - 1].time;
         if (canUpdate) {
             for (let index = previousPoints.length - 1; index < actual.length; index++) {
                 const point = actual[index];
-                if (point.time !== previousPoints[index]?.time || point.equity !== previousPoints[index]?.equity) current.series.update({ time: point.time as UTCTimestamp, value: point.equity });
+                if (point.time !== previousPoints[index]?.time || point.value !== previousPoints[index]?.value) current.series.update({ time: point.time as UTCTimestamp, value: point.value });
             }
-        } else current.series.setData(actual.map(p => ({ time: p.time as UTCTimestamp, value: p.equity })));
+        } else current.series.setData(actual.map(p => ({ time: p.time as UTCTimestamp, value: p.value })));
         plotted.current = actual;
         if (actual.length) {
             if (reset) current.chart.timeScale().fitContent();
             else if (visible) current.chart.timeScale().setVisibleRange(visible);
         }
-        viewport.current = { mode, range, loaded: actual.length > 0 };
-    }, [actual, mode, range]);
+        viewport.current = { mode, range, metric, loaded: actual.length > 0 };
+    }, [actual, mode, range, metric]);
     useEffect(() => {
         const current = instance.current;
         if (!current) return;
@@ -67,5 +71,9 @@ export function EquityChart({ points, mode }: {
         }
         current.markers.setMarkers(markers.sort((a, b) => Number(a.time) - Number(b.time)));
     }, [actual, orders.data, mode]);
-    return <section className="panel chart"><div className="section-head"><div><span className="eyebrow">PORTFOLIO PERFORMANCE</span><h2>Kurva ekuitas <span className="chart-value">{hover === null ? '' : collateral(hover)}</span></h2></div><div className="segmented" aria-label="Rentang grafik">{['24H', '7D', '30D', 'ALL'].map(r => <button aria-pressed={range === r} className={range === r ? 'selected' : ''} key={r} onClick={() => { setHover(null); setRange(r); }}>{r}</button>)}</div></div><div ref={container} className="chart-viewport" style={{ display: actual.length ? undefined : 'none' }} role="img" aria-label="Grafik ekuitas aktual; geser dan zoom untuk menjelajah"/>{!actual.length && <div className="empty chart-empty"><span>Belum ada titik ekuitas</span><small>Grafik akan muncul setelah worker menyimpan valuasi aktual.</small></div>}<footer>Geser untuk menjelajah · scroll untuk zoom · valuasi pUSD tersimpan<br />Panah BUY / SELL = order tersimpan, bukan konfirmasi fill. Maksimal 100 order terbaru, dipetakan ke snapshot valuasi terdekat.{orders.error && <span className="error"> Marker order tidak tersedia: {orders.error.message}</span>}</footer></section>;
+    const formattedValue = metric === 'drawdown' ? percent(hover ?? actual.at(-1)?.value) : collateral(hover ?? actual.at(-1)?.value);
+    return <section className="panel chart"><div className="section-head"><div><h2>Performa portofolio</h2><span className="chart-value">{formattedValue}</span></div><div className="segmented" aria-label="Rentang grafik">{['24H', '7D', '30D', 'ALL'].map(r => <button aria-pressed={range === r} className={range === r ? 'selected' : ''} key={r} onClick={() => { setHover(null); setRange(r); }}>{r}</button>)}</div></div>
+      <div className="chart-metrics" aria-label="Metrik grafik">{(Object.keys(metricLabels) as ChartMetric[]).map(key => <button key={key} className={key === metric ? 'selected' : ''} aria-pressed={key === metric} onClick={() => { setHover(null); setMetric(key); }}>{metricLabels[key]}</button>)}</div>
+      <div ref={container} className="chart-viewport" style={{ display: actual.length ? undefined : 'none' }} role="img" aria-label={`Grafik ${metricLabels[metric].toLowerCase()}; geser dan zoom untuk menjelajah`}/>{!actual.length && <div className="empty chart-empty"><span>Belum ada data valuasi</span><small>Grafik muncul setelah valuasi portofolio tersimpan.</small></div>}
+      <footer><span>Crosshair · geser · zoom</span><details><summary>Informasi grafik</summary>Snapshot valuasi {mode}. {metric === 'drawdown' ? 'Drawdown ditampilkan dalam persen.' : 'Nilai dalam pUSD.'} Panah BUY / SELL menunjukkan maksimal 100 order terbaru pada snapshot terdekat, bukan konfirmasi fill.{orders.error && <p className="error">Marker tidak tersedia: {orders.error.message}</p>}</details></footer></section>;
 }
