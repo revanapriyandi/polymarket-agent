@@ -4,7 +4,9 @@ RUN corepack enable
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 RUN pnpm install --frozen-lockfile --network-concurrency=4 --child-concurrency=2
 COPY . .
-RUN NODE_OPTIONS=--max-old-space-size=512 pnpm build
+# Run pnpm build and pnpm lint on the release checkout before image creation.
+# Bundle on the VPS without repeating TypeScript's larger memory workload.
+RUN NODE_OPTIONS=--max-old-space-size=512 pnpm build:bundle
 RUN test -f dist/server/api/src/index.js && test -f dist/server/worker/src/index.js && test -f scripts/worker-health.ts
 FROM node:24-bookworm-slim AS runtime
 WORKDIR /app

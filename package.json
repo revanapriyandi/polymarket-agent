@@ -16,7 +16,8 @@
     "owner:create": "tsx --env-file=.env scripts/create-owner.ts",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
-    "build": "pnpm typecheck && vite build --config apps/web/vite.config.ts && tsup apps/api/src/index.ts apps/worker/src/index.ts --format esm --platform node --target node24 --out-dir dist/server --splitting --sourcemap --external pg-native",
+    "build": "pnpm typecheck && pnpm build:bundle",
+    "build:bundle": "vite build --config apps/web/vite.config.ts && tsup apps/api/src/index.ts apps/worker/src/index.ts --format esm --platform node --target node24 --out-dir dist/server --splitting --sourcemap --external pg-native",
     "start:api": "node --env-file=.env dist/server/api/src/index.js",
     "start:worker": "node --env-file=.env dist/server/worker/src/index.js"
   },
