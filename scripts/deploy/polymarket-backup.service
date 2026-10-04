@@ -1,0 +1,12 @@
+[Unit]
+Description=Encrypted Polymarket database backup
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+UMask=0077
+WorkingDirectory=/opt/polymarket-agent/app
+ExecStart=/bin/bash /opt/polymarket-agent/app/scripts/deploy/backup.sh /opt/polymarket-agent/app
+TimeoutStartSec=1200
+Nice=10

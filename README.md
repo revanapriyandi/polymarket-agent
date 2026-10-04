@@ -2,6 +2,8 @@
 
 Owner-only dashboard, API and independent worker for bounded research, deterministic risk checks, paper trading and gated live execution. The dashboard reads persisted worker state, ledgers, provider invocations and evaluations. Paper profits are virtual; pUSD collateral and estimated USD service costs are displayed separately. There is no guaranteed return.
 
+The [2026-10-04 release report](docs/release-2026-10-04.md) records the public repository, HTTPS VPS deployment, Settings help, browser checks, restart recovery and encrypted backup/restore verification. Provider configuration, sustained paper evaluation and real trading remain separate gates.
+
 ## Local operation
 
 Requirements: Node 24, pnpm 10, PostgreSQL and Redis. Inspect `.env.example`, copy it to an untracked `.env`, and set the required local connection/auth/encryption configuration. Do not commit credentials. Keep live execution disabled during setup.

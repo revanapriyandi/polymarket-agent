@@ -80,6 +80,8 @@ The replay implementation has also been exercised with synthetic paired, one-sid
 
 ## Owner configuration still needed
 
+Deployment status was subsequently verified in the [2026-10-04 VPS release report](release-2026-10-04.md). The local evidence and original pending checklist below remain historical; they do not override the newer release evidence.
+
 1. In Settings → Provider AI, save an official/custom connection, explicit model, prices and daily/monthly budget. Run its capability probe and assign research, evidence and forecast roles; summary is optional. Fallbacks require explicit selection and their own capabilities/evaluation.
 2. In Settings → Layanan, save/enable a Tavily key and probe it after setting positive research budgets. Public RSS monitoring already works; it does not replace verified research evidence.
 3. For live preparation, configure a dedicated funded wallet, server-side signer, CLOB credentials, Polygon RPC, relayer, allowances and local eligibility as documented in [polymarket.md](polymarket.md). Configure live capital and accepted limits in Settings. No secrets should be pasted into chat or committed to source.
