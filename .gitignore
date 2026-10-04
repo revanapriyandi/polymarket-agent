@@ -1,0 +1,15 @@
+node_modules/
+.pnpm-store/
+%SystemDrive%/
+dist/
+.env
+.env.*
+!.env.example
+.runtime/
+backups/
+*.log
+*.tsbuildinfo
+artifacts/
+*.pmbk
+*.pem
+*.key

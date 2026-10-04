@@ -1,0 +1,16 @@
+node_modules
+.pnpm-store
+.runtime
+%SystemDrive%
+artifacts
+dist
+.git
+.env
+.env.*
+!.env.example
+backups
+*.bak
+*.log
+*.pmbk
+*.pem
+*.key

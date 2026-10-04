@@ -1,0 +1,48 @@
+# Use with compose.yaml when an existing host reverse proxy owns ports 80/443.
+# docker compose -p polymarket-agent -f compose.yaml -f compose.vps.yaml up -d
+x-logging: &bounded-logging
+  driver: json-file
+  options: { max-size: "10m", max-file: "3" }
+services:
+  postgres:
+    mem_limit: 256m
+    cpus: 0.50
+    command: ["postgres", "-c", "shared_buffers=64MB", "-c", "max_connections=60", "-c", "work_mem=2MB"]
+    logging: *bounded-logging
+  redis:
+    mem_limit: 160m
+    cpus: 0.25
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory", "96mb", "--maxmemory-policy", "noeviction"]
+    logging: *bounded-logging
+  api:
+    image: polymarket-agent:${APP_VERSION:-local}
+    ports: ["127.0.0.1:${APP_LOCAL_PORT:-4105}:4100"]
+    mem_limit: 320m
+    cpus: 0.50
+    environment:
+      NODE_OPTIONS: --max-old-space-size=224
+    logging: *bounded-logging
+  worker:
+    image: polymarket-agent:${APP_VERSION:-local}
+    mem_limit: 448m
+    cpus: 0.75
+    environment:
+      NODE_OPTIONS: --max-old-space-size=320
+    logging: *bounded-logging
+  caddy:
+    profiles: [standalone-tls]
+  backup:
+    profiles: [maintenance]
+    build:
+      context: .
+      target: backup
+    image: polymarket-agent-backup:${APP_VERSION:-local}
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL}
+      BACKUP_KEY: ${BACKUP_KEY:?Set BACKUP_KEY}
+    volumes: ["${BACKUP_DIRECTORY:-./backups}:/backups"]
+    mem_limit: 256m
+    cpus: 0.50
+    depends_on:
+      postgres: {condition: service_healthy}
+    logging: *bounded-logging

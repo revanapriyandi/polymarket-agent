@@ -1,0 +1,21 @@
+# News and search services
+
+Public RSS news works without an AI model or API key. Defaults are Federal Reserve press releases and BBC World. The worker polls no faster than five minutes; freshness is based on publication time and limited to 24 hours. Undated items remain visible as undated and do not trigger fresh-news research. Headlines and feed excerpts are observations, not verified financial facts. RSS-only research explicitly requires abstention unless verified source text is available.
+
+Custom feeds require public HTTPS URLs without credentials, nonstandard ports or fragments. DNS answers are checked and pinned into each socket. Internal addresses are rejected even when an AI endpoint allowlist permits them. Redirects are rejected. Responses are limited to one MiB with a ten-second deadline. XML document types and entity declarations are rejected before parsing with entity processing disabled. Only supported RSS/Atom records are accepted.
+
+News observations retain publication and retrieval dates, source feed provenance, freshness and matched markets. Matching uses meaningful question keywords. Up to 100 URL-deduplicated observations are retained in `system_state/news-trends`; only new or changed content hashes trigger affected-market research. A feed's primary label describes provenance and is restricted to its own hostname; it does not assert factual verification.
+
+Tavily is disabled initially. Enable it in Services, save a key using the masked credentials form, and set positive research daily/monthly budgets in Settings. The stored key is encrypted with the existing AES-GCM master key and overrides the environment fallback. Clearing the stored key restores the environment fallback. Services responses expose only credential presence/source. No account, subscription or payment method is created automatically.
+
+Connection testing performs a real basic search and consumes the same budget as research. A usable response requires actual titles, source URLs and content. Search uses the news topic with a one-day time window, plus at most one restricted official resolution-domain query, then bounded extraction. Search/extract calls reserve conservative credit costs under a database lock. Known billed credits are settled; missing usage or failed requests retain their reserved maximum as uncertain cost. Invocation settlement and operating-cost journal entries commit atomically. Configure the per-credit price to match the paid plan; no free allowance is assumed.
+
+Interfaces: `readServiceView()`, `saveServices(expectedVersion, config, apiKey?)`, `probeSearch(mode)`, `loadTrends()`, `refreshTrends(markets)`. Settings writes use optimistic versioning. Never log or return the `services-secrets` state. Feed content and provider text are untrusted data and cannot authorize tools, browser actions or shell commands.
+
+Manual checks: inspect default feeds without configuring AI; refresh twice and verify unchanged articles do not reschedule research; submit a private-address feed and verify rejection; change settings with a stale version and verify conflict; verify zero budgets block a paid test; enter a key through Settings and verify the API response omits it; with an authorized funded budget, run a test and verify invocation cost and journal posting.
+
+Official reference: [Tavily search parameters](https://docs.tavily.com/documentation/api-reference/search), [date filtering](https://help.tavily.com/articles/3347142954-best-practices).
+
+Search readiness requires a persisted successful probe of the current configuration version, valid for 24 hours. Key configuration alone reports untested; failed/interrupted probes report blocked. Saving services invalidates earlier probe readiness. Readiness also checks current budgets. Feed freshness does not establish Tavily readiness.
+
+POST /api/services/search accepts only a query (1-1000 characters without control characters), requires authenticated owner reauthentication, and limits five requests per minute. The shared provider budget/concurrency/rate lock still applies. It uses the current paper/live mode and returns up to six actual public HTTPS sources with valid publication dates in the last day. No extraction occurs; results remain unverified excerpts and never authorize orders. Probe charges the active mode too. No key means no paid request.
