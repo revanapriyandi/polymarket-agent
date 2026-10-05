@@ -33,6 +33,7 @@ export function sanitizeError(error: unknown): string {
   return status >= 400 && status <= 599 ? `Provider request failed (HTTP ${status})` : `Provider operation failed (${/^[A-Za-z]{1,40}$/.test(name) ? name : 'Error'})`;
 }
 export function redactSecrets<T>(value: T): unknown {
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value.toISOString();
   if (Array.isArray(value)) return value.map(redactSecrets);
   if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, /secret|token|authorization|password|api.?key|headers/i.test(k) ? '[REDACTED]' : redactSecrets(v)]));
   return value;

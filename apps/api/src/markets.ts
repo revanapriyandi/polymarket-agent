@@ -15,7 +15,7 @@ export async function storedMarket(id: string): Promise<Market> {
 export async function registerMarkets(app: FastifyInstance) {
   app.get('/api/markets', async req => {
     const { search } = z.object({ search: z.string().max(200).default('') }).parse(req.query);
-    return (await pool.query("SELECT payload FROM markets WHERE (payload->>'question' ILIKE $1 OR id=$2) AND payload->>'active'='true' AND payload->>'closed'='false' ORDER BY (payload->>'liquidity')::numeric DESC LIMIT 200", [`%${search}%`, search])).rows.map(row => row.payload);
+    return (await pool.query("SELECT payload FROM markets WHERE (payload->>'question' ILIKE $1 OR id=$2) AND payload->>'active'='true' AND payload->>'closed'='false' AND payload->>'acceptingOrders'='true' AND NULLIF(payload->>'endDate','')::timestamptz>now() ORDER BY (payload->>'liquidity')::numeric DESC LIMIT 200", [`%${search}%`, search])).rows.map(row => row.payload);
   });
   app.get('/api/markets/:id', async req => storedMarket(z.object({ id: z.string().regex(/^\d+$/) }).parse(req.params).id));
   app.get('/api/markets/:id/book', async req => {

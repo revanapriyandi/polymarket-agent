@@ -1,6 +1,6 @@
 # Platform expansion verification — 5 October 2026
 
-This report covers the source release before VPS replacement. Production evidence is collected separately against the deployed commit; a local build does not establish production market connectivity or funded-wallet readiness.
+This report distinguishes source checks, production market/UI observations and external operations that still require credentials. A successful build does not establish funded-wallet readiness.
 
 ## Scope and manual coverage
 
@@ -20,11 +20,22 @@ This report covers the source release before VPS replacement. Production evidenc
 | Off-happy-path data | Local external HTTP/DNS failures and unverified exchange timestamps | Explicit unavailable/stale state; no fabricated history or quote freshness |
 | VPS recovery preparation | Encrypted backup before migration/replacement | `polymarket-20261005T020657Z.pmbk`; prior services healthy and NTP synchronized |
 
-No automated test suite was added. Browser checks exercise real controls; screenshots are held in ignored local `artifacts/` to keep owner/session data out of the public repository.
+No automated test suite was added. Browser checks exercise real controls; screenshots are held in ignored local `artifacts/` to keep owner/session data out of the public repository. Review also verified timestamp serialization through credential redaction, removed expired contracts from the active catalog, tied historical model names to their recorded provider version, and clamped browser age displays at zero between clock ticks.
+
+## Production observations
+
+Measured against platform build `4bafadd527c39a4beb657e195f626cdbb8014e30` at `pm.rnevio.com` on 5 October 2026, with owner authentication and paper mode:
+
+- API, worker, PostgreSQL and Redis health checks passed. Real WebSocket observations covered 80 subscribed tokens; one sample had 38 quotes within the 2-second freshness limit and 66 reconstructed depth books. These are snapshots, not permanent freshness guarantees.
+- A 15-second SSE observation captured 117 packets and 456 quote delivery samples after omitting initial cached snapshots. Worker receive-to-publication delay was P50 46 ms, P95 93 ms, maximum 115 ms. Browser inter-update intervals were P50 107.2 ms and P95 252.2 ms. This does not measure end-to-end network or order-fill latency.
+- Official history returned 286 one-day samples in a spot check. YES/NO switching, 1D/7D/30D ranges, a second-market comparison, SMA, zoom reset and PNG download worked without browser JavaScript errors. Daily analytics CSV export also worked.
+- The research workspace displayed real contract rules and recorded tool checkpoints, with explicit missing-model and budget prerequisites. No forecast was invented and no paid provider was called for verification.
+- Paper equity/cash remained 1,000 pUSD, with zero P&L and exposure in the verification snapshot.
+- Post-migration encrypted backup `polymarket-20261005T021943Z.pmbk`, SHA-256 `23e956ed189fac73187a79f3c88e7842454c353f15521eaa63db7e1bca5955c3`, restored successfully into an isolated database. Public table counts, balanced journals and all 11 wallet constraints were verified. The managed-wallet table was empty. The temporary database was removed after verification. The restore role must own the isolated database; the initial attempt correctly rolled back when schema-creation permission was absent.
 
 ## Remaining external verification boundaries
 
-- The Windows environment could not reliably fetch Polymarket HTTP data. Real price history, depth streaming, event timing and reconnect verification must therefore be measured on the VPS after deployment. A configured 100 ms coalescing interval is not a latency or fill guarantee.
+- The Windows environment could not reliably fetch Polymarket HTTP data. Real price history, depth streaming and timing were verified through the VPS instead. A configured 100 ms coalescing interval is not a latency or fill guarantee; short samples do not establish long-term latency percentiles.
 - Builder credentials have not been supplied. Actual account creation, allowance transactions, funded balance checks and ambiguous relayer reconciliation have not been exercised against a real wallet.
 - Paid AI/search providers and capability-qualified role assignments remain unconfigured. Research UI/checkpoints and authorization are verified; paid provider execution and forecast quality are separate gates.
 - No real orders were submitted. Paper history, strategy evaluation and live activation retain their existing conditions; this release does not certify profitable trading.

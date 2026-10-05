@@ -15,7 +15,10 @@ export async function registerResearch(app: FastifyInstance) {
     const [market, control, {settings}] = await Promise.all([storedMarket(id),readControl(),readSettings()]);
     const [evidence, forecasts, runs, ready] = await Promise.all([
       pool.query('SELECT id,payload,created_at FROM evidence WHERE market_id=$1 ORDER BY created_at DESC LIMIT 60',[id]),
-      pool.query('SELECT f.id,f.payload,f.baseline,f.outcome,f.provider_version,f.rules_hash,f.created_at,p.config->>\'name\' provider,p.config->>\'model\' model FROM forecasts f LEFT JOIN providers p ON p.id=f.provider_id WHERE market_id=$1 ORDER BY f.created_at DESC LIMIT 30',[id]),
+      pool.query(`SELECT f.id,f.payload,f.baseline,f.outcome,f.provider_version,f.rules_hash,f.created_at,p.config->>'name' provider,
+        coalesce((SELECT i.model FROM invocations i WHERE i.provider_id=f.provider_id AND i.provider_version=f.provider_version AND i.role='forecast' AND i.status='complete' AND i.created_at<=f.created_at ORDER BY i.created_at DESC LIMIT 1),
+          CASE WHEN p.version=f.provider_version THEN p.config->>'model' END,'Tidak tercatat') model
+        FROM forecasts f LEFT JOIN providers p ON p.id=f.provider_id WHERE market_id=$1 ORDER BY f.created_at DESC LIMIT 30`,[id]),
       pool.query("SELECT id,job_id,role,tool,skill_version,result,duration_ms,created_at FROM tool_runs WHERE input->>'marketId'=$1 AND role IN ('research','forecast') ORDER BY created_at DESC LIMIT 60",[id]),
       researchReady(control.mode as Mode)
     ]);

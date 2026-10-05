@@ -57,7 +57,7 @@ Schedule this procedure daily with the host's systemd timer or controlled task s
 
 ## Restore drill and recovery
 
-1. Create a new empty isolated PostgreSQL database, for example `polymarket_restore_20261004`. Never point restore at the production database. Use a dedicated database owner and prevent application connections to that target.
+1. Create a new empty isolated PostgreSQL database, for example `polymarket_restore_20261004`. Never point restore at the production database. The role in `RESTORE_DATABASE_URL` must own that isolated database and be able to create its schemas (for example, create it with `createdb -U postgres -O polymarket polymarket_restore_20261004` when `polymarket` is the restore role). Prevent application connections to that target. Do not grant the application role superuser privileges to perform a restore.
 2. Set `RESTORE_DATABASE_URL` to that target and supply the matching `BACKUP_KEY`. Keep `DATABASE_URL` set to production/source so the script can additionally reject a matching host/port/database target.
 3. Run `pnpm exec tsx --env-file=.env scripts/restore.ts /secure/backups/polymarket-2026-10-04.pmbk --confirm-isolated-target`.
 4. The script verifies GCM authentication before database mutation, requires an empty target, restores in one PostgreSQL transaction, compares all public table counts, and checks that every journal has at least two entries summing exactly to zero. Authentication uses a temporary plaintext dump with restricted file permissions; it is deleted in a finally block. Use encrypted local disks for restore staging.

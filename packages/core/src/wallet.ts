@@ -38,7 +38,7 @@ export async function walletView() {
   return {managed:!!row,legacy,signerAddress:row?.signer_address??null,walletAddress:row?.wallet_address??settings.walletAddress,status:row?.status??'unconfigured',message:row?.message??'',updatedAt:row?.updated_at??null,readiness:status,steps:[
     {label:'Signer trading di server',ready:!!row||legacy,detail:row?'Dibuat dan disimpan terenkripsi di server':legacy?'Menggunakan konfigurasi server':'Dibuat otomatis setelah koneksi Polymarket disimpan'},
     {label:'Autentikasi Polymarket',ready:row?.status==='connected'||legacy&&!!env.POLYMARKET_CLOB_API_KEY,detail:row?.status==='connected'?'Kredensial CLOB diturunkan oleh SDK':'Isi koneksi awal lalu pilih Hubungkan wallet'},
-    {label:'Allowance & akses trading',ready:!!status?.approvals?.isFullyApproved&&!status?.geoblock?.blocked,detail:status?.geoblock?.blocked?'Akses trading diblokir dari lokasi server':'Diperiksa melalui SDK dan Polygon'},
+    {label:'Allowance & akses trading',ready:!!status?.approvals?.isFullyApproved&&status?.geoblock?.blocked===false,detail:status?.geoblock?.blocked?'Akses trading diblokir dari lokasi server':'Diperiksa melalui SDK dan Polygon'},
     {label:'Dana & profil risiko',ready:!!settings.live&&!!status?.balance&&Number(status.balance)>=Number(settings.live.capital),detail:status?.balance?`Saldo ${status.balance} pUSD; deposit tidak dihitung sebagai laba`:'Isi saldo wallet setelah alamat akun terkonfirmasi'},
-    {label:'Kesiapan live',ready:!!status?.ready,detail:status?.reason??'Simulasi dapat berjalan tanpa wallet; aktivasi live tetap terpisah'}]};
+    {label:'Kesiapan wallet',ready:!!status?.ready,detail:status?.reason??'Simulasi dapat berjalan tanpa wallet; aktivasi live tetap terpisah'}]};
 }
