@@ -1,9 +1,13 @@
 import { pool } from '../../../packages/db/src/index.js';
 import { releaseOrder } from '../../../packages/core/src/ledger.js';
 import { audit } from '../../../packages/core/src/state.js';
+import { operationsQueue } from '../../../packages/core/src/queue.js';
 
 /** Called only while holding the single-wallet worker lease. */
 export async function recoverInterruptedOperations() {
+  await pool.query("UPDATE managed_wallet SET status='ambiguous',message='Worker terhenti saat setup; periksa akun dan allowance sebelum mencoba lagi',updated_at=now() WHERE status='connecting'");
+  const wallet=(await pool.query("SELECT version FROM managed_wallet WHERE status='queued' AND id=1")).rows[0];
+  if(wallet)await operationsQueue.add('wallet-connect',{version:wallet.version},{jobId:`wallet-connect-${wallet.version}`,priority:1,attempts:1});
   const preparing = await pool.query("SELECT id FROM orders WHERE mode='live' AND status='preparing'");
   for (const order of preparing.rows) await releaseOrder(order.id, 'rejected', 'Restart sebelum dispatch; reservasi dilepas, persetujuan baru diperlukan');
   const orders = await pool.query("UPDATE orders SET status='ambiguous',message='Restart during submission; reconcile native hash before retry',updated_at=now() WHERE mode='live' AND status='submitting' RETURNING id");

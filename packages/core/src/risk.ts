@@ -4,6 +4,8 @@ import { d, metrics } from './ledger.js';
 import { evaluate } from './evaluation.js';
 import { env } from './config.js';
 import { feeFor } from '../../trading/src/math.js';
+import { entryFeedGuard } from './market-stream.js';
+import { ENTRY_BOOK_MAX_AGE_MS } from '../../shared/src/realtime.js';
 import type { OrderIntent, Market, OrderBook, Settings } from '../../shared/src/index.js';
 export const hashIntent = (intent: OrderIntent) => createHash('sha256').update(JSON.stringify(intent)).digest('hex');
 export async function authorize(intents: OrderIntent[], market: Market, books: OrderBook[]): Promise<{ approved: boolean; reason: string }> {
@@ -40,11 +42,12 @@ export async function authorize(intents: OrderIntent[], market: Market, books: O
     else if (!exit && !settings.strategyEnabled[intents[0].strategy as 'arbitrage'|'prediction']) reason = 'Strategi dinonaktifkan oleh pemilik';
     else if (!exit && risk && (d(market.liquidity).lt(risk.minimumLiquidity)||d(market.volume).lt(risk.minimumVolume))) reason = 'Likuiditas atau volume di bawah kebijakan aktif';
     else if (!exit && (!Number.isFinite(Date.parse(market.endDate))||Date.parse(market.endDate)<=Date.now()+86400000||Date.parse(market.endDate)>Date.now()+30*86400000)) reason = 'Horizon pasar di luar universe strategi';
-    else if (books.some(b => !Number.isFinite(Date.parse(b.observedAt))||Date.now() - Date.parse(b.observedAt) > 10_000||Date.parse(b.observedAt)>Date.now()+1000)) reason = 'Order book kadaluwarsa';
+    else if (books.some(b => !Number.isFinite(Date.parse(b.observedAt))||Date.now() - Date.parse(b.observedAt) > (exit ? 10000 : ENTRY_BOOK_MAX_AGE_MS)||Date.parse(b.observedAt)>Date.now()+1000)) reason = 'Order book kadaluwarsa';
     else if (intents.some(i => Date.now() - Date.parse(i.createdAt) > 15_000)) reason = 'Usulan kadaluwarsa';
     else if ((current.unmarkedPositions > 0 || current.equity === null) && !exit) reason = 'Valuasi atau settlement posisi belum lengkap';
     else if (!exit && d(current.dailyPnl).lte(d(risk.capital).mul(risk.dailyLoss).negated())) reason = 'Batas kerugian harian tercapai';
     else if (!exit && d(current.drawdown).gte(risk.maxDrawdown)) reason = 'Batas drawdown tercapai';
+    if (!reason && !exit) { const feed = await entryFeedGuard(intents.map(intent => intent.tokenId)); if (!feed.ready) reason = feed.reason; }
     if (reason.includes('tercapai')) await client.query("UPDATE controls SET state='risk-stopped',reason=$1,updated_at=now() WHERE id=1", [reason]);
     const total = intents.filter(i => i.side === 'BUY').reduce((s, i) => s.plus(i.maxCost), d(0));
     if (!reason && risk) {

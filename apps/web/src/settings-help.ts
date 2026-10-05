@@ -133,25 +133,26 @@ export const settingsGuides: Record<SettingsTab, SettingsGuide> = {
     links: [{ label: 'Tavily · kredit dan harga', url: 'https://docs.tavily.com/documentation/api-credits' }],
   },
   Wallet: {
-    intro: 'Form ini menyimpan alamat publik wallet trading. Gunakan wallet khusus agar saldo dan aktivitas sistem dapat direkonsiliasi.',
+    intro: 'Wallet trading khusus dibuat di server untuk operasi 24/7. Paper tidak membutuhkan wallet. Koneksi awal memakai Builder API key resmi Polymarket.',
     steps: [
-      'Salin alamat wallet yang akan menampung dana dan posisi Polymarket. Alamat harus sesuai konfigurasi wallet di server.',
-      'Simpan wallet, lalu pilih Periksa readiness. Tinjau alasan setiap pemeriksaan yang belum siap.',
+      'Pilih Siapkan koneksi awal. Ambil Builder key, secret, dan passphrase dari Settings → Builders di akun Polymarket, lalu simpan.',
+      'Pilih Hubungkan wallet. Worker membuat signer terenkripsi, menyiapkan Deposit Wallet, autentikasi CLOB dan allowance melalui SDK. Alamat muncul setelah akun terkonfirmasi.',
       'Tetap gunakan paper selama evaluasi. Aktivasi live baru tersedia setelah persyaratan strategi, wallet dan konfigurasi server terpenuhi.',
     ],
     sections: [
       { title: 'Alamat dan persetujuan', fields: [
-        { name: 'Alamat wallet', description: 'Alamat EVM publik: 0x diikuti 40 karakter heksadesimal. Masukkan alamat wallet trading/funder yang digunakan integrasi, bukan alamat token atau kontrak pasar. Jangan masukkan seed phrase atau private key.' },
+        { name: 'Alamat wallet', description: 'Dihasilkan oleh proses koneksi. Ini alamat akun trading/funder pada Polygon; berbeda dari alamat signer. Gunakan hanya alamat akun yang telah terkonfirmasi untuk pendanaan. Private key tidak diminta atau ditampilkan di dashboard.' },
         { name: 'Persetujuan risiko live', description: 'Centang hanya setelah memahami kemungkinan kehilangan modal. Persetujuan ini tidak mengaktifkan live dengan sendirinya dan tidak menjamin keuntungan.' },
-        { name: 'Periksa readiness', description: 'Menjalankan pemeriksaan konfigurasi dan koneksi wallet yang tersedia. Alasan kegagalan ditampilkan; saldo, allowance, autentikasi dan rekonsiliasi tetap harus siap sebelum entry.' },
+        { name: 'Perbarui status', description: 'Menjalankan pemeriksaan konfigurasi, akses, saldo dan allowance. Checklist diperbarui otomatis. Terhubung tidak langsung mengaktifkan trading live.' },
       ] },
       { title: 'Konfigurasi di server', fields: [
-        { name: 'Signer dan wallet', description: 'Administrator mengisi POLYMARKET_PRIVATE_KEY, POLYMARKET_WALLET_ADDRESS dan POLYGON_RPC_URL melalui penyimpanan rahasia server. Private key tidak tersedia untuk agent atau form dashboard.' },
-        { name: 'CLOB dan relayer', description: 'Kredensial API CLOB dan relayer dikonfigurasi di server sesuai akun/wallet. Layanan ini diperlukan untuk autentikasi trading dan operasi posisi; alamat publik saja tidak cukup.' },
+        { name: 'Signer dan wallet', description: 'Signer baru dibuat di server dan disimpan terenkripsi dalam database. MASTER_KEY dan BACKUP_KEY harus dipertahankan terpisah agar wallet dapat dipulihkan. Instalasi lama melalui environment tetap didukung.' },
+        { name: 'CLOB dan relayer', description: 'SDK menurunkan kredensial CLOB dan memakai Builder API key untuk relayer. Kredensial resmi diperlukan pada penyiapan awal. POLYGON_RPC_URL opsional untuk RPC khusus yang dipasang administrator di server.' },
+        { name: 'Setup belum pasti', description: 'Jika koneksi putus di tengah pembuatan wallet atau allowance, signer dipertahankan dan pengiriman ulang dihentikan. Operator memeriksa transaksi relayer dan alamat akun sebelum memulihkan setup; jangan membuat wallet baru untuk menggantikannya.' },
         { name: 'Gerbang live', description: 'Per strategi: minimal 30 hari paper, 100 transaksi selesai, net positif setelah biaya, drawdown dalam batas dan rekonsiliasi bersih. Prediksi juga membutuhkan minimal 50 event selesai serta evaluasi probabilitas. ENABLE_LIVE_EXECUTION tetap false pada pemasangan awal.' },
         { name: 'Emergency stop', description: 'Menghentikan entry dan memulai pembatalan order terbuka sambil mempertahankan pemantauan posisi. Ini tidak otomatis menutup semua posisi atau menjamin tidak ada kerugian.' },
       ] },
     ],
-    links: [{ label: 'Polymarket · integrasi trading', url: 'https://docs.polymarket.com/trading/overview' }],
+    links: [{ label: 'Polymarket · wallet dan autentikasi', url: 'https://docs.polymarket.com/trading/wallets-auth' }],
   },
 };

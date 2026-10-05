@@ -1,7 +1,6 @@
 import { pool, transaction } from '../../../packages/db/src/index.js';
 import { d, postJournal, metrics, settleFill, releaseOrder } from '../../../packages/core/src/ledger.js';
 import { readSettings, readState, audit, writeState } from '../../../packages/core/src/state.js';
-import { env } from '../../../packages/core/src/config.js';
 import { executableDepth, feeFor } from '../../../packages/trading/src/index.js';
 import type { Market, Mode } from '../../../packages/shared/src/index.js';
 import type { Runtime } from './context.js';
@@ -22,8 +21,8 @@ async function settlementTool(kind: 'merge' | 'redeem', id: string, mode: Mode, 
 export async function walletCheck(runtime: Runtime) {
   const { settings } = await readSettings();
   const checkedAt = new Date().toISOString();
-  if (!settings.walletAddress || !env.POLYMARKET_WALLET_ADDRESS || settings.walletAddress.toLowerCase() !== env.POLYMARKET_WALLET_ADDRESS.toLowerCase() || !runtime.live) {
-    const state = { ready: false, checkedAt, reason: 'Alamat Settings harus cocok dengan wallet server; signer, RPC dan kredensial CLOB wajib tersedia' };
+  if (!settings.walletAddress || !runtime.walletAddress || settings.walletAddress.toLowerCase() !== runtime.walletAddress.toLowerCase() || !runtime.live) {
+    const state = { ready: false, checkedAt, reason: 'Hubungkan wallet trading terlebih dahulu, lalu perbarui status untuk memeriksa saldo dan akses' };
     await writeState('wallet', state); return state;
   }
   try {
@@ -36,8 +35,8 @@ export async function walletCheck(runtime: Runtime) {
     await writeState('wallet', state); return state;
   } catch { const state = { ready: false, checkedAt, reason: 'Pemeriksaan wallet gagal; live tetap diblokir' }; await writeState('wallet', state); return state; }
 }
-export async function markPositions(mode: Mode, runtime: Runtime) {
-  const rows = (await pool.query("SELECT p.*,m.payload market FROM positions p JOIN markets m ON m.id=p.market_id WHERE p.mode=$1 AND p.shares>0", [mode])).rows;
+export async function markPositions(mode: Mode, runtime: Runtime, marketId?:string) {
+  const rows = (await pool.query("SELECT p.*,m.payload market FROM positions p JOIN markets m ON m.id=p.market_id WHERE p.mode=$1 AND p.shares>0 AND ($2::text IS NULL OR p.market_id=$2)", [mode,marketId??null])).rows;
   for (const row of rows) {
     try {
       const market: Market = row.market, book = await runtime.public.getBook(row.token_id);

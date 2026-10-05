@@ -4,6 +4,8 @@ import type { DashboardSnapshot } from '../../../packages/shared/src/index';
 import { api } from './api';
 import { Reauth } from './auth-ui';
 import type { SecureWrite } from './Settings';
+import type { StreamUpdate } from '../../../packages/shared/src/realtime';
+import type { ClientStream } from './market-stream';
 
 interface TradingState {
   snapshot?: DashboardSnapshot;
@@ -30,13 +32,25 @@ export function TradingProvider({ children }: { children: ReactNode }) {
   const resolver = useRef<{ resolve: (token: string) => void; reject: (error: Error) => void } | null>(null);
   useEffect(() => {
     const stream = new EventSource('/api/events', { withCredentials: true });
-    stream.onerror = () => setOnline(false);
+    const disconnectMarket = () => client.setQueryData<ClientStream>(['market-stream'], previous => previous ? { ...previous, transportOnline: false } : previous);
+    stream.onerror = () => { setOnline(false); disconnectMarket(); };
+    stream.addEventListener('market-unavailable', disconnectMarket);
+    stream.addEventListener('quotes', event => {
+      try {
+        const update: StreamUpdate = JSON.parse((event as MessageEvent).data);
+        client.setQueryData<ClientStream>(['market-stream'], previous => {
+          const quotes = new Map(previous?.status.epoch === update.status.epoch ? previous.quotes.map(quote => [quote.tokenId, quote]) : []);
+          for (const quote of update.quotes) { const old = quotes.get(quote.tokenId); if (!old || quote.receivedAt >= old.receivedAt) quotes.set(quote.tokenId, quote); }
+          return { ...update, quotes: [...quotes.values()].filter(quote => update.status.tokens.includes(quote.tokenId)), deliveredAt: Date.now(), transportOnline: true };
+        });
+      } catch { disconnectMarket(); }
+    });
     stream.addEventListener('unavailable', () => setOnline(false));
     stream.addEventListener('snapshot', event => {
       try { client.setQueryData(['dashboard'], JSON.parse((event as MessageEvent).data)); setOnline(true); }
       catch { setOnline(false); }
     });
-    return () => { stream.close(); resolver.current?.reject(new Error('Sesi ditutup')); resolver.current = null; };
+    return () => { stream.close(); disconnectMarket(); resolver.current?.reject(new Error('Sesi ditutup')); resolver.current = null; };
   }, [client]);
   const secure: SecureWrite = useCallback(async (path, body, method) => {
     if (resolver.current) throw new Error('Selesaikan verifikasi yang sedang terbuka terlebih dahulu');

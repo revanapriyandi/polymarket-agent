@@ -1,0 +1,13 @@
+import { useQuery } from '@tanstack/react-query';
+import type { SignalTiming } from '../../../../packages/shared/src/realtime';
+import { useMarketStream } from '../market-stream';
+import { StreamHealth } from '../components/StreamHealth';
+import { api, date } from '../api';
+
+export default function Latency() {
+  const {data,now}=useMarketStream();
+  const timings=useQuery({queryKey:['signal-timings'],queryFn:()=>api<SignalTiming[]>('/market-stream/timings'),refetchInterval:5000});
+  const samples=timings.data??[], sorted=samples.map(item=>item.queueMs).sort((a,b)=>a-b);
+  const percentile=(value:number)=>sorted.length?`${sorted[Math.min(sorted.length-1,Math.floor(sorted.length*value))]} ms`:'Belum ada sampel';
+  return <div className="page-stack"><StreamHealth/><section className="panel"><h2>Jalur harga dan eksekusi</h2><div className="latency-flow"><span>Polymarket WebSocket</span><b>→</b><span>Worker · gabung ≤100 ms*</span><b>→</b><span>Filter peluang</span><b>→</b><span>Antrean strategi</span><b>→</b><span>Book REST + Risk Guardian</span><b>→</b><span>Eksekusi</span></div><p className="muted">*100 ms adalah interval penggabungan target pada worker, bukan jaminan latensi jaringan atau fill. Ringkasan saldo diperbarui terpisah setiap 5 detik. Kegagalan feed menghentikan entry; posisi tetap dipantau.</p><dl className="summary-list"><div><dt>Pesan pada sesi stream ini</dt><dd>{data?.status.events??0}</dd></div><div><dt>Pesan harga ditolak</dt><dd>{data?.status.rejected??0}</dd></div><div><dt>Data terakhir diterima browser</dt><dd>{data?`${now-data.deliveredAt} ms lalu`:'—'}</dd></div><div><dt>Antrean sinyal P50 / P95</dt><dd>{percentile(.5)} / {percentile(.95)}</dd></div><div><dt>Batas umur harga WebSocket / book entry</dt><dd>2.000 / 1.000 ms</dd></div><div><dt>Deteksi stream tanpa pesan</dt><dd>15 detik; harga individual tetap kedaluwarsa setelah 2 detik</dd></div></dl></section><section className="panel"><h2>Pemeriksaan sinyal terbaru</h2><small>Sampel dari worker yang benar-benar dijalankan; maksimum 200 sampel terakhir dalam 24 jam. Durasi pemeriksaan bukan konfirmasi fill.</small>{timings.error&&<p className="error">{timings.error.message}</p>}<div className="table-scroll"><table><thead><tr><th>Waktu</th><th>Pasar</th><th>Antrean</th><th>Validasi</th><th>Total</th><th>Hasil</th></tr></thead><tbody>{samples.map((item,index)=><tr key={`${item.at}-${index}`}><td>{date(item.at)}</td><td>{item.marketId}</td><td>{item.queueMs} ms</td><td>{item.validationMs} ms</td><td>{item.totalMs} ms</td><td>{item.reason}</td></tr>)}</tbody></table></div>{!samples.length&&<div className="empty">Belum ada kandidat streaming yang diteruskan. Worker tidak menjalankan order hanya untuk menghasilkan angka latensi.</div>}</section></div>;
+}

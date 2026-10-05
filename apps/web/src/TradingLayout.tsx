@@ -28,7 +28,7 @@ export function TradingLayout({ email }: { email: string }) {
           {open && <div className="nav-children">{group.pages.map(page => <NavLink key={page.path} to={page.path} onClick={navigate}>{page.label}</NavLink>)}</div>}
         </>}</div>;
       })}</nav>
-      <footer className="sidebar-footer"><span className={'connection '+(state.online && !state.stale ? 'online' : '')}><i/>{state.online && !state.stale ? 'Data realtime' : 'Menghubungkan data…'}</span><span className="owner-email" title={email}>{email}</span><button className="text-button" onClick={() => { void api('/auth/sign-out', {}).then(() => { client.setQueryData(['session'], null); client.removeQueries({ predicate: query => query.queryKey[0] !== 'session' }); }).catch(error => setLogoutError(error.message)); }}><LogOut size={14}/>Keluar</button></footer>
+      <footer className="sidebar-footer"><span className={'connection '+(state.online && !state.stale ? 'online' : '')}><i/>{state.online && !state.stale ? 'Dashboard terhubung' : 'Menghubungkan data…'}</span><span className="owner-email" title={email}>{email}</span><button className="text-button" onClick={() => { void api('/auth/sign-out', {}).then(() => { client.setQueryData(['session'], null); client.removeQueries({ predicate: query => query.queryKey[0] !== 'session' }); }).catch(error => setLogoutError(error.message)); }}><LogOut size={14}/>Keluar</button></footer>
     </aside>
     {menuOpen && <button className="nav-scrim" aria-label="Tutup navigasi" onClick={() => setMenuOpen(false)}/>}
     <div className="trading-workspace">

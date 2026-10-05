@@ -75,7 +75,7 @@ export async function recoverArbitrage(market: Market, mode: Mode, runtime: Runt
   const intent: OrderIntent = { ...proposal(market, p.token_id, p.shares, quote.worstPrice, mode, 'arbitrage', version, p.profile_version), side: 'SELL', strategy: 'exit', recoveryFor: 'arbitrage', maxCost: '0' };
   const approval = await authorize([intent], market, [book]); if (approval.approved) await executeOrder(intent.operationId, runtime);
 }
-export async function manageExits(mode: Mode, runtime: Runtime) {
+export async function manageExits(mode: Mode, runtime: Runtime, marketId?:string) {
   const { settings, version } = await readSettings(), risk = mode === 'paper' ? settings.paper : settings.live; if (!risk) return;
   const m = await metrics(mode, settings);
   const riskHit = d(m.dailyPnl).lte(d(risk.capital).mul(risk.dailyLoss).negated()) || d(m.drawdown).gte(risk.maxDrawdown);
@@ -88,7 +88,7 @@ export async function manageExits(mode: Mode, runtime: Runtime) {
     }
   }
   const permitted = await Promise.all((await selectedForecastProfiles()).map(async model => ({...model,profileVersion:await profileVersion('prediction',settings,model)})));
-  const rows = (await pool.query("SELECT p.*,m.payload market FROM positions p JOIN markets m ON m.id=p.market_id WHERE p.mode=$1 AND p.shares>0 AND p.reserved_shares=0", [mode])).rows;
+  const rows = (await pool.query("SELECT p.*,m.payload market FROM positions p JOIN markets m ON m.id=p.market_id WHERE p.mode=$1 AND p.shares>0 AND p.reserved_shares=0 AND ($2::text IS NULL OR p.market_id=$2)", [mode,marketId??null])).rows;
   for (const p of rows) {
     let market: Market = p.market;
     if (p.strategy === 'arbitrage') { await recoverArbitrage(market, mode, runtime); continue; }

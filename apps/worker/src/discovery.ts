@@ -1,6 +1,5 @@
 import { Worker } from 'bullmq';
 import { discoveryQueue, queueConnection } from '../../../packages/core/src/queue.js';
-import { pool } from '../../../packages/db/src/index.js';
 import type { Market } from '../../../packages/shared/src/index.js';
 import type { Runtime } from './context.js';
 import { scan, task, resolveForecasts } from './pipeline.js';
@@ -14,10 +13,6 @@ export function startDiscovery(runtime: Runtime, onMarkets: (markets: Market[]) 
     if (job.name === 'scan') {
       const markets = await scan(runtime, jobId);
       if (markets) await onMarkets(markets);
-      else {
-        const rows = (await pool.query('SELECT payload FROM markets ORDER BY updated_at DESC LIMIT 200')).rows;
-        await onMarkets(rows.map(row => row.payload as Market));
-      }
       return;
     }
     if (job.name === 'trends' || job.name === 'refresh-trends') return task('research', 'trends', jobId, {}, () => trendRefresh());

@@ -1,7 +1,13 @@
-import { pgTable, text, boolean, timestamp, integer, jsonb, numeric, uniqueIndex, index, uuid, bigserial } from 'drizzle-orm/pg-core';
+import { pgTable, text, boolean, timestamp, integer, jsonb, numeric, uniqueIndex, index, uuid, bigserial, check } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
 import type { Settings, ProviderConfig, Capabilities, AgentView, Market, OrderBook, OrderIntent, Forecast, Evidence } from '../../shared/src/index.js';
 const time = (name: string) => timestamp(name, { withTimezone: true }).notNull().defaultNow();
 const amount = (name: string) => numeric(name, { precision: 38, scale: 12 }).notNull().default('0');
+export const managedWallet = pgTable('managed_wallet', { id: integer('id').primaryKey().default(1), version: integer('version').notNull().default(1), signerAddress: text('signer_address').notNull(), walletAddress: text('wallet_address'), secrets: text('secrets').notNull(), status: text('status', { enum: ['configured','queued','connecting','connected','ambiguous'] }).notNull().default('configured'), message: text('message').notNull().default(''), updatedAt: time('updated_at') },table=>[
+  check('managed_wallet_single_owner',sql`${table.id}=1 AND ${table.version}>0`),
+  check('managed_wallet_status',sql`${table.status} IN ('configured','queued','connecting','connected','ambiguous')`),
+  check('managed_wallet_addresses',sql`${table.signerAddress} ~ '^0x[0-9a-fA-F]{40}$' AND (${table.walletAddress} IS NULL OR ${table.walletAddress} ~ '^0x[0-9a-fA-F]{40}$')`),
+]);
 
 export const user = pgTable('auth_user', { id: text('id').primaryKey(), name: text('name').notNull(), email: text('email').notNull().unique(), emailVerified: boolean('email_verified').notNull().default(false), image: text('image'), createdAt: time('created_at'), updatedAt: time('updated_at') });
 export const session = pgTable('auth_session', { id: text('id').primaryKey(), expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(), token: text('token').notNull().unique(), createdAt: time('created_at'), updatedAt: time('updated_at'), ipAddress: text('ip_address'), userAgent: text('user_agent'), userId: text('user_id').notNull().references(() => user.id, { onDelete: 'cascade' }) });

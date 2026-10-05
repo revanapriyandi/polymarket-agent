@@ -4,6 +4,7 @@ import { collateral, percent } from '../api';
 import { Metric, RiskSummary, pnlTone } from '../components/PortfolioSummary';
 import { CandidateEvaluation } from '../Evaluation';
 import { BookReplay } from '../BookReplay';
+import { AnalyticsBreakdown } from '../components/AnalyticsBreakdown';
 
 export function Performance() {
   const { snapshot } = useTrading();
@@ -16,7 +17,7 @@ export function Performance() {
     <Metric title="P&L bersih" value={collateral(metrics.totalPnl)} tone={pnlTone(metrics.totalPnl)} note="Realisasi + belum realisasi − operasi"/>
   </section><EquityChart points={snapshot.equity} mode={snapshot.mode}/><div className="two-column"><section className="panel"><h2>Rincian performa</h2><dl className="summary-list">
     <div><dt>Modal tercatat</dt><dd>{collateral(metrics.capital)}</dd></div><div><dt>Biaya trading tercatat</dt><dd>{collateral(metrics.tradingFees)}</dd></div><div><dt>Biaya operasional terkonversi</dt><dd>{collateral(metrics.operatingCosts)}</dd></div><div><dt>Posisi belum memiliki mark</dt><dd>{metrics.unmarkedPositions}</dd></div>
-  </dl><small>Biaya trading sudah masuk P&L terealisasi. Biaya layanan dikonversi dari USD sesuai pengaturan; pUSD tidak dijamin setara USD.</small></section><RiskSummary metrics={metrics} mode={snapshot.mode}/></div></div>;
+  </dl><small>Biaya trading sudah masuk P&L terealisasi. Biaya layanan dikonversi dari USD sesuai pengaturan; pUSD tidak dijamin setara USD.</small></section><RiskSummary metrics={metrics} mode={snapshot.mode}/></div><AnalyticsBreakdown/></div>;
 }
 export function Evaluation() {
   const { snapshot, secure } = useTrading();

@@ -10,6 +10,7 @@ export const navigation: NavigationGroup[] = [
     { path: '/portfolio/history', label: 'Riwayat transaksi', description: 'Telusuri transaksi dan pembukuan dana pada mode aktif.' },
   ] },
   { label: 'Pasar', icon: ScanLine, pages: [
+    { path: '/markets/terminal', label: 'Terminal pasar', description: 'Harga streaming, grafik probabilitas, perbandingan, dan order book.' },
     { path: '/markets/opportunities', label: 'Peluang', description: 'Kandidat dari pemindaian pasar; setiap entry tetap melalui pemeriksaan risiko.' },
     { path: '/markets/decisions', label: 'Keputusan trading', description: 'Alasan persetujuan atau penolakan setiap usulan transaksi.' },
   ] },
@@ -19,12 +20,14 @@ export const navigation: NavigationGroup[] = [
     { path: '/analytics/replay', label: 'Replay pasar', description: 'Uji kandidat arbitrase menggunakan snapshot order book tersimpan.' },
   ] },
   { label: 'Riset', icon: Newspaper, pages: [
+    { path: '/research/workspace', label: 'Riset pasar', description: 'Aturan resolution, bukti sumber, tahapan agent, dan riwayat probabilitas.' },
     { path: '/research/news', label: 'Berita & sumber', description: 'Konteks pasar dari sumber publik dengan tanggal dan status kesegaran.' },
     { path: '/research/forecasts', label: 'Forecast AI', description: 'Probabilitas, bukti, dan masa berlaku analisis model.' },
   ] },
   { label: 'Agent & sistem', icon: Bot, pages: [
     { path: '/system/agents', label: 'Agent', description: 'Pantau tugas, hasil, dan alasan agent menunggu.' },
     { path: '/system/health', label: 'Kesehatan sistem', description: 'Koneksi, antrean, wallet, dan kendala operasional.' },
+    { path: '/system/latency', label: 'Data & latensi', description: 'Kesegaran harga dan durasi pemeriksaan sinyal yang diukur oleh worker.' },
     { path: '/system/activity', label: 'Log aktivitas', description: 'Aktivitas terbaru dari worker dan perubahan operasi.' },
     { path: '/system/invocations', label: 'Pemakaian AI', description: 'Panggilan model dan pencatatan estimasi biayanya.' },
     { path: '/system/tools', label: 'Riwayat tools', description: 'Hasil tools, versi skill, dan durasi pekerjaan agent.' },

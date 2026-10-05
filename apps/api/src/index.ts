@@ -8,12 +8,16 @@ import { ZodError } from 'zod';
 import { auth } from '../../../packages/core/src/auth.js';
 import { env } from '../../../packages/core/src/config.js';
 import { pool } from '../../../packages/db/src/index.js';
-import { redis, operationsQueue, researchQueue, discoveryQueue } from '../../../packages/core/src/queue.js';
+import { redis, operationsQueue, researchQueue, discoveryQueue, signalsQueue } from '../../../packages/core/src/queue.js';
 import { logger } from '../../../packages/core/src/logger.js';
-import { dashboard } from '../../../packages/core/src/dashboard.js';
 import { owner, HttpError, requestHeaders } from './security.js';
 import { registerRoutes } from './routes.js';
 import { registerServices } from './services.js';
+import { registerEvents } from './events.js';
+import { registerMarkets } from './markets.js';
+import { registerResearch } from './research.js';
+import { registerWallet } from './wallet.js';
+import { registerAnalytics } from './analytics.js';
 const app = Fastify({ loggerInstance: logger as FastifyBaseLogger, bodyLimit: 128 * 1024, trustProxy: env.NODE_ENV === 'production' ? '127.0.0.1' : false, requestTimeout: 120000 });
 await app.register(helmet, { contentSecurityPolicy: { directives: { defaultSrc: ["'self'"], scriptSrc: ["'self'"], styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'], fontSrc: ["'self'", 'https://fonts.gstatic.com'], imgSrc: ["'self'", 'data:'], connectSrc: ["'self'"] } } });
 await app.register(rateLimit, { max: 180, timeWindow: '1 minute', redis, keyGenerator: req => req.ip });
@@ -49,23 +53,11 @@ app.route({ method: ['GET','POST'], url: '/api/auth/*', handler: async (req, rep
 } });
 await registerRoutes(app);
 await registerServices(app);
-app.get('/api/events', async (req, reply) => {
-  reply.hijack(); reply.raw.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache, no-transform', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' });
-  let busy = false, closed = false, lastAuth = 0, expiresAt = 0;
-  const send = async () => {
-    if (busy || closed) return; busy = true;
-    try {
-      if(Date.now()>=expiresAt || Date.now()-lastAuth>=30000){const session=await owner(req);expiresAt=new Date(session.session.expiresAt).getTime();lastAuth=Date.now();}
-      if(!Number.isFinite(expiresAt)||Date.now()>=expiresAt)throw new HttpError(401,'Sesi kadaluwarsa');
-      reply.raw.write(`event: snapshot\ndata: ${JSON.stringify(await dashboard())}\n\n`);
-    } catch(error) {
-      reply.raw.write('event: unavailable\ndata: {}\n\n');
-      if(error instanceof HttpError && error.status===401) {closed=true;reply.raw.end();}
-    } finally { busy=false; }
-  };
-  const interval = setInterval(() => void send(), 1500);
-  reply.raw.on('close', () => { closed = true; clearInterval(interval); }); await send();
-});
+await registerEvents(app);
+await registerMarkets(app);
+await registerResearch(app);
+await registerWallet(app);
+await registerAnalytics(app);
 if (existsSync(resolve('dist/web/index.html'))) { await app.register(staticFiles, { root: resolve('dist/web') }); app.setNotFoundHandler((req, reply) => req.url.startsWith('/api/') ? reply.code(404).send({ error: 'Endpoint tidak ditemukan' }) : reply.sendFile('index.html')); }
 await app.listen({ host: env.API_HOST, port: env.API_PORT });
-for (const signal of ['SIGTERM','SIGINT'] as const) process.on(signal, () => { void (async () => { await app.close(); await operationsQueue.close(); await researchQueue.close(); await discoveryQueue.close(); await redis.quit(); await pool.end(); process.exit(0); })(); });
+for (const signal of ['SIGTERM','SIGINT'] as const) process.on(signal, () => { void (async () => { await app.close(); await operationsQueue.close(); await researchQueue.close(); await discoveryQueue.close(); await signalsQueue.close(); await redis.quit(); await pool.end(); process.exit(0); })(); });

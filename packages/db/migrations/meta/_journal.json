@@ -29,6 +29,20 @@
       "when": 1791120132633,
       "tag": "0003_friendly_magus",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1791163526502,
+      "tag": "0004_managed_wallet",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1791163892550,
+      "tag": "0005_wallet_constraints",
+      "breakpoints": true
     }
   ]
 }

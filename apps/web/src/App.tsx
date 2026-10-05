@@ -16,6 +16,9 @@ const Replay = lazy(() => import('./pages/Analytics').then(module => ({ default:
 const Agents = lazy(() => import('./pages/Operations').then(module => ({ default: module.Agents })));
 const Health = lazy(() => import('./pages/Operations').then(module => ({ default: module.Health })));
 const ActivityLog = lazy(() => import('./pages/Operations').then(module => ({ default: module.ActivityLog })));
+const Terminal = lazy(() => import('./pages/Terminal'));
+const Latency = lazy(() => import('./pages/Latency'));
+const Research = lazy(() => import('./pages/Research'));
 
 export function App() {
   const client = useQueryClient();
@@ -33,6 +36,7 @@ export function App() {
       <Route path="markets" element={<Navigate to="/markets/opportunities" replace/>}/>
       <Route path="markets/opportunities" element={<Records name="opportunities"/>}/>
       <Route path="markets/decisions" element={<Records name="decisions"/>}/>
+      <Route path="markets/terminal" element={<Terminal/>}/>
       <Route path="analytics" element={<Navigate to="/analytics/performance" replace/>}/>
       <Route path="analytics/performance" element={<Performance/>}/>
       <Route path="analytics/evaluation" element={<Evaluation/>}/>
@@ -40,9 +44,11 @@ export function App() {
       <Route path="research" element={<Navigate to="/research/news" replace/>}/>
       <Route path="research/news" element={<News/>}/>
       <Route path="research/forecasts" element={<Records name="forecasts"/>}/>
+      <Route path="research/workspace" element={<Research/>}/>
       <Route path="system" element={<Navigate to="/system/agents" replace/>}/>
       <Route path="system/agents" element={<Agents/>}/>
       <Route path="system/health" element={<Health/>}/>
+      <Route path="system/latency" element={<Latency/>}/>
       <Route path="system/activity" element={<ActivityLog/>}/>
       <Route path="system/invocations" element={<Records name="invocations"/>}/>
       <Route path="system/tools" element={<Records name="tools"/>}/>

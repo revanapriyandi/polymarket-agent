@@ -8,6 +8,7 @@ import type { Market, OrderBook, OrderIntent } from '../../shared/src/index';
 import { D, roundShares, feeFor } from './math';
 import { GatewayError } from './errors';
 import { ExchangeRequestControl } from './request-control';
+import { ENTRY_BOOK_MAX_AGE_MS } from '../../shared/src/realtime';
 
 export interface PreparedOrder { intent: OrderIntent; signed: SignedOrder; hash: string; exchangeOrderHash?: string | null; exchangeAddress?: string | null; preparedAt: string; authorizationExpiresAt?: string }
 export interface ReconciledFill { tradeId: string; orderId: string; tokenId: string; shares: string; price: string; side: string; status: string; confirmed: boolean; transactionHash: string | null; actualFeeUsd: string|null; feeRateBps: string | null }
@@ -62,7 +63,7 @@ export class PolymarketGateway {
     if (book.negRisk) throw new GatewayError('UNSUPPORTED_MARKET', 'Negative risk book is excluded');
     return { tokenId, bids: [...book.bids].sort((a,b) => D(b.price).cmp(a.price)), asks: [...book.asks].sort((a,b) => D(a.price).cmp(b.price)), tickSize: String(book.tickSize), minOrderSize: book.minOrderSize, hash: book.hash, observedAt: book.timestamp ? new Date(book.timestamp).toISOString() : now() };
   }
-  getHistory(tokenId: string) { return this.requests.run('read', () => collect(this.publicClient.listPriceHistory({ assetId: tokenId, start: new Date(Date.now() - 14 * 86400000), bucketSeconds: 3600 }))); }
+  getHistory(tokenId: string, days = 14, bucketSeconds = 3600) { return this.requests.run('read', () => collect(this.publicClient.listPriceHistory({ assetId: tokenId, start: new Date(Date.now() - days * 86400000), bucketSeconds }))); }
   async getGeoblock() { const response = await fetch('https://polymarket.com/api/geoblock', { signal: AbortSignal.timeout(10000) }); if (!response.ok) throw new GatewayError('GEOBLOCK_UNKNOWN', 'Cannot verify geographic trading eligibility'); const data: unknown = await response.json(); if (!data || typeof data !== 'object' || !('blocked' in data) || typeof data.blocked !== 'boolean') throw new GatewayError('GEOBLOCK_UNKNOWN', 'Invalid geographic eligibility response'); return data as { blocked: boolean; country?: string; region?: string }; }
   async walletReadiness(address: string) { const [geoblock, approvals] = await Promise.all([this.getGeoblock(), this.requests.run('read', () => this.publicClient.fetchTradingApprovalsState({ user: address }))]); return { ready: !geoblock.blocked && approvals.isFullyApproved && !!this.options.secureClient, geoblock, approvals, authenticated: !!this.options.secureClient, heartbeatConfigured: !!this.options.heartbeat, gaslessConfigured: this.options.gaslessConfigured === true }; }
   async prepareOrder(intent: OrderIntent): Promise<PreparedOrder> {
@@ -91,6 +92,12 @@ export class PolymarketGateway {
     if ((await this.getGeoblock()).blocked) throw new GatewayError('GEO_BLOCKED', 'Trading unavailable in this location');
     if (['GTC','GTD'].includes(prepared.intent.orderType) && Date.now()-this.heartbeatAt > 7000) throw new GatewayError('HEARTBEAT_REQUIRED', 'Order heartbeat expired before submission');
     if (authorizedUntil <= Date.now()) throw new GatewayError('PERMIT_EXPIRED', 'Risk permit expired during final preflight');
+    if (prepared.intent.side === 'BUY') {
+      const book = await this.getBook(prepared.intent.tokenId);
+      const age = Date.now()-Date.parse(book.observedAt);
+      if (!Number.isFinite(age) || age > ENTRY_BOOK_MAX_AGE_MS || age < -1000 || !D(prepared.intent.limitPrice).mod(book.tickSize).eq(0)) throw new GatewayError('STALE_BOOK', 'Fresh book and current tick required immediately before submission');
+      if (authorizedUntil <= Date.now()) throw new GatewayError('PERMIT_EXPIRED', 'Risk permit expired during book revalidation');
+    }
     this.submitted.add(prepared.hash);
     return this.requests.run('order', async () => {
       const response = await this.secure().postOrder(prepared.signed);

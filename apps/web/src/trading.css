@@ -3,7 +3,11 @@
 .sidebar-brand{height:86px;flex-shrink:0;display:flex;align-items:center;padding:0 22px;border-bottom:1px solid #26333780}
 .sidebar-brand>a{display:flex;align-items:center;gap:12px;text-decoration:none;font-size:14px;font-weight:600}
 .sidebar-brand .brand{font-size:26px}.sidebar-brand small{display:block;font-size:10px;font-weight:400;margin-top:3px}
-.trading-sidebar nav{padding:25px 12px;flex:1;overflow-y:auto}.nav-caption{display:block;margin:0 12px 14px;font-size:10px;letter-spacing:1.4px;color:#637b83;text-transform:uppercase}
+.trading-sidebar nav{padding:25px 12px;flex:1;min-height:0;overflow-y:auto;scrollbar-width:thin;scrollbar-color:transparent transparent;scrollbar-gutter:stable}
+.trading-sidebar:hover nav,.trading-sidebar:has(:focus-visible) nav{scrollbar-color:#40565f transparent}
+.trading-sidebar nav::-webkit-scrollbar{width:5px}.trading-sidebar nav::-webkit-scrollbar-track{background:transparent}.trading-sidebar nav::-webkit-scrollbar-thumb{background:transparent;border-radius:8px}.trading-sidebar:hover nav::-webkit-scrollbar-thumb,.trading-sidebar:has(:focus-visible) nav::-webkit-scrollbar-thumb{background:#40565f}
+@media(hover:none){.trading-sidebar nav{scrollbar-color:#40565f transparent}.trading-sidebar nav::-webkit-scrollbar-thumb{background:#40565f}}
+.nav-caption{display:block;margin:0 12px 14px;font-size:10px;letter-spacing:1.4px;color:#637b83;text-transform:uppercase}
 .nav-group{margin:4px 0}.nav-parent{display:flex;align-items:center;justify-content:flex-start;gap:12px;width:100%;padding:12px;border:0;border-radius:5px;background:transparent;font-size:12px;font-weight:500;color:#9aadb3;text-decoration:none}
 .nav-parent>span{flex:1;text-align:left}.nav-parent>svg:last-child:not(:first-child){margin-left:auto;transition:transform .15s}.nav-parent .rotated{transform:rotate(180deg)}
 .nav-parent:hover{background:#1a252a;color:#e1e8ea}.nav-parent.active,.nav-parent.selected{color:var(--mint);background:#19322d}.nav-children{margin:8px 0 12px 20px;padding-left:14px;border-left:1px solid #2d4144}

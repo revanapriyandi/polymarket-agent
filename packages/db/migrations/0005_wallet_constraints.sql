@@ -1,0 +1,3 @@
+ALTER TABLE "managed_wallet" ADD CONSTRAINT "managed_wallet_single_owner" CHECK ("managed_wallet"."id"=1 AND "managed_wallet"."version">0);--> statement-breakpoint
+ALTER TABLE "managed_wallet" ADD CONSTRAINT "managed_wallet_status" CHECK ("managed_wallet"."status" IN ('configured','queued','connecting','connected','ambiguous'));--> statement-breakpoint
+ALTER TABLE "managed_wallet" ADD CONSTRAINT "managed_wallet_addresses" CHECK ("managed_wallet"."signer_address" ~ '^0x[0-9a-fA-F]{40}$' AND ("managed_wallet"."wallet_address" IS NULL OR "managed_wallet"."wallet_address" ~ '^0x[0-9a-fA-F]{40}$'));

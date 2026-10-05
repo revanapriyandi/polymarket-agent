@@ -7,6 +7,8 @@ import { readControl, readSettings, audit, writeState } from '../../../packages/
 import { executableDepth, feeFor, GatewayError, type PreparedOrder } from '../../../packages/trading/src/index.js';
 import type { OrderIntent, Market, Mode } from '../../../packages/shared/src/index.js';
 import type { Runtime } from './context.js';
+import { entryFeedGuard } from '../../../packages/core/src/market-stream.js';
+import { ENTRY_BOOK_MAX_AGE_MS } from '../../../packages/shared/src/realtime.js';
 async function consumePermit(id: string): Promise<OrderIntent | null> {
   return transaction(async client => {
     await client.query('SELECT pg_advisory_xact_lock(73011)');
@@ -36,6 +38,7 @@ async function paperMatch(id: string, runtime: Runtime, initial: boolean) {
   if (control.mode !== intent.mode || (control.state !== 'running' && intent.side === 'BUY')) { await releaseOrder(id, 'cancelled', 'Kontrol berubah sebelum eksekusi'); return; }
   if (intent.orderType === 'GTD' && intent.expiration! - 60 < Math.floor(Date.now()/1000)) { await releaseOrder(id, 'expired', 'GTD berakhir'); return; }
   const [market, book] = await Promise.all([runtime.public.getMarket(intent.marketId), runtime.public.getBook(intent.tokenId)]);
+  if (intent.side === 'BUY') { const feed = await entryFeedGuard([intent.tokenId]); if (!feed.ready || Date.now()-Date.parse(book.observedAt)>ENTRY_BOOK_MAX_AGE_MS) { await releaseOrder(id,'rejected',feed.ready ? 'Harga book lebih lama dari 1 detik' : feed.reason); return; } }
   if (initial) {
     const permit = (await pool.query('SELECT expires_at,intent_hash,consumed_at FROM permits WHERE operation_id=$1', [id])).rows[0];
     if (!permit?.consumed_at || permit.intent_hash !== hashIntent(intent) || new Date(permit.expires_at).getTime() <= Date.now()) { await releaseOrder(id, 'rejected', 'Persetujuan berakhir sebelum paper match; usulan baru diperlukan'); return; }
@@ -66,6 +69,7 @@ export async function executeOrder(id: string, runtime: Runtime) {
   try {
     if (intent.mode === 'paper') { await paperMatch(id, runtime, true); return; }
     if (!runtime.live) throw new Error('Signer belum tersedia');
+    if (intent.side === 'BUY' && !(await entryFeedGuard([intent.tokenId])).ready) throw new Error('Entry stream unavailable');
     const prepared: PreparedOrder = await runtime.live.prepareOrder(intent);
     const client=await pool.connect();
     try {
@@ -80,6 +84,7 @@ export async function executeOrder(id: string, runtime: Runtime) {
       const saved=await client.query("UPDATE orders SET signed_payload=$1,exchange_id=$3,status='submitting',updated_at=now() WHERE id=$2 AND status='preparing'", [JSON.stringify(prepared), id,prepared.exchangeOrderHash]);
       if(!saved.rowCount) throw new Error('Order state changed before submission');
       await client.query('COMMIT');
+    if (intent.side === 'BUY' && !(await entryFeedGuard([intent.tokenId])).ready) throw new Error('Entry stream unavailable before submission');
     submitted = true;
     const response = await runtime.live.submitPrepared(prepared);
     if (!response.ok) { await client.query('SELECT pg_advisory_unlock(73011)'); await releaseOrder(id, 'rejected', 'Exchange secara eksplisit menolak order'); return; }

@@ -1,5 +1,6 @@
 import { createSecureClient, forkEnvironmentConfig, production, relayerApiKey, type ApiKeyCreds, type Signer } from '@polymarket/client';
 import { privateKey } from '@polymarket/client/viem';
+import { builderApiKey, type BuilderApiKeyCreds } from '@polymarket/client/node';
 import { createPublicClient, http, hashTypedData, type Address, type TypedDataDomain } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import { polygon } from 'viem/chains';
@@ -7,7 +8,7 @@ import { GatewayError } from './errors';
 import { PolymarketGateway } from './gateway';
 import type { ExchangeRequestControl } from './request-control';
 
-export interface LiveWalletConfig { privateKey: `0x${string}`; walletAddress: Address; rpcUrl: string; credentials: ApiKeyCreds; relayer?: { key: string; address: Address } }
+export interface LiveWalletConfig { privateKey: `0x${string}`; walletAddress: Address; rpcUrl: string; credentials: ApiKeyCreds; relayer?: { key: string; address: Address }; builder?: BuilderApiKeyCreds }
 export async function createLiveGateway(config: LiveWalletConfig, requestControl?: ExchangeRequestControl) {
   const account = privateKeyToAccount(config.privateKey);
   const rpc = createPublicClient({ chain: polygon, transport: http(config.rpcUrl) });
@@ -28,7 +29,7 @@ export async function createLiveGateway(config: LiveWalletConfig, requestControl
     }
     return underlying.signTypedData(payload);
   } };
-  const apiKey=config.relayer ? relayerApiKey(config.relayer) : undefined;
+  const apiKey=config.builder ? builderApiKey(config.builder) : config.relayer ? relayerApiKey(config.relayer) : undefined;
   const secureClient = await createSecureClient({ environment, apiKey, wallet: config.walletAddress, signer, credentials: config.credentials });
-  return new PolymarketGateway({ secureClient, requestControl, walletAddress: config.walletAddress, rpcUrl: config.rpcUrl, gaslessConfigured:!!config.relayer && config.walletAddress.toLowerCase() !== account.address.toLowerCase(), orderHash:order=>hashes.get(order.salt) ?? null, exchangeAddress:order=>exchanges.get(order.salt) ?? null, publicOptions: { environment }, heartbeat: { signerAddress: account.address, credentials: config.credentials } });
+  return new PolymarketGateway({ secureClient, requestControl, walletAddress: config.walletAddress, rpcUrl: config.rpcUrl, gaslessConfigured:!!(config.relayer || config.builder) && config.walletAddress.toLowerCase() !== account.address.toLowerCase(), orderHash:order=>hashes.get(order.salt) ?? null, exchangeAddress:order=>exchanges.get(order.salt) ?? null, publicOptions: { environment }, heartbeat: { signerAddress: account.address, credentials: secureClient.credentials } });
 }
