@@ -58,3 +58,6 @@ Public RSS research does not require an invented Tavily monetary budget when Tav
 
 
 `responseMode: json | sse` chooses the SDK parser independently of provider protocol. Some compatible gateways return `text/event-stream` even for a non-streaming request. Select SSE mode for these gateways; the app requests streaming explicitly, consumes the entire bounded response with the SDK, and validates the final result. Stream errors propagate to the persisted invocation guard and invalidate capability readiness. No manual SSE parser or provider-body logging is used.
+
+
+`minimumCallIntervalMs` spaces dispatches using the latest persisted invocation timestamp, with a provider row lock to prevent racing callers. Waiting releases the transaction lock, honors the agent abort signal, and is bounded by the configured timeout. Quota and configuration version are checked again after waiting; market/policy guards run again before generation. Waiting does not create an invocation, reset quotas, or retry a dispatched request. For the initial Rnevio free upstream combo, use 35,000 ms to avoid three immediate capability probes exhausting an upstream rolling-minute quota. Other clients of the gateway still share upstream limits.

@@ -1,23 +1,28 @@
 import { and, eq } from 'drizzle-orm';
+import { setTimeout as delay } from 'node:timers/promises';
 import { db, pool, schema, transaction } from '../../db/src/index.js';
 import { decryptSecret, encryptSecret, discoverModels, runCapabilityProbe, runForecast, runEvidenceAnalysis, runResearchPlan, estimateInputTokenUpperBound, type Usage } from '../../ai/src/index.js';
 import { ProviderConfigSchema, ProviderSecretsSchema, type Capabilities, type ProviderView, type Mode, type Market, type Evidence, type Forecast } from '../../shared/src/index.js';
 import { d, postJournal } from './ledger.js';
 import { readSettings, audit } from './state.js';
-import { consumeToolBudget } from './tool-budget.js';
+import { consumeToolBudget, toolBudget } from './tool-budget.js';
 import { profileVersion } from './profiles.js';
 import { evaluateProfile } from './evaluation.js';
 type StoredProvider = typeof schema.providers.$inferSelect;
+class InvocationDelay extends Error {
+  constructor(readonly milliseconds: number) { super('Invocation pacing'); }
+}
 export { encryptSecret };
 export async function providerViews(): Promise<ProviderView[]> {
   const rows = await db.select().from(schema.providers);
   const spent = (await pool.query("SELECT provider_id,sum(coalesce(cost,reserved_cost)) FILTER(WHERE created_at>=date_trunc('day',now()))::text daily,sum(coalesce(cost,reserved_cost)) FILTER(WHERE created_at>=date_trunc('month',now()))::text monthly,count(*) FILTER(WHERE created_at>=date_trunc('day',now()))::int calls_day,count(*) FILTER(WHERE created_at>=date_trunc('month',now()))::int calls_month FROM invocations GROUP BY provider_id")).rows;
   return rows.map(p => {
-    const amount = spent.find(v => v.provider_id === p.id);
+    const amount = spent.find(v => v.provider_id === p.id), config = ProviderConfigSchema.parse(p.config);
+    const quotaReason = (amount?.calls_day ?? 0) >= config.callsPerDay || (amount?.calls_month ?? 0) >= config.callsPerMonth ? 'Kuota panggilan harian atau bulanan tercapai; tunggu periode UTC berikutnya' : undefined;
     const tested = p.capabilities ? Date.parse(p.capabilities.testedAt) : NaN;
     const ready = p.capabilities?.text && p.capabilities.structured && p.capabilities.usage && Number.isFinite(tested) && tested <= Date.now() && Date.now() - tested <= 30 * 86400000;
     const secret = ProviderSecretsSchema.parse(JSON.parse(decryptSecret(p.secrets)));
-    return { ...ProviderConfigSchema.parse(p.config), id: p.id, version: p.version, hasSecret: !!secret.apiKey || Object.keys(secret.headers).length > 0, capabilities: p.capabilities, spentTodayUsd: amount?.daily ?? '0', spentMonthUsd: amount?.monthly ?? '0', callsToday: amount?.calls_day ?? 0, callsMonth: amount?.calls_month ?? 0, status: !p.config.enabled ? 'unconfigured' : ready ? 'ready' : 'blocked', reason: !p.config.enabled ? 'Koneksi belum diaktifkan' : ready ? undefined : 'Uji kemampuan belum lulus' };
+    return { ...config, id: p.id, version: p.version, hasSecret: !!secret.apiKey || Object.keys(secret.headers).length > 0, capabilities: p.capabilities, spentTodayUsd: amount?.daily ?? '0', spentMonthUsd: amount?.monthly ?? '0', callsToday: amount?.calls_day ?? 0, callsMonth: amount?.calls_month ?? 0, status: !config.enabled ? 'unconfigured' : ready && !quotaReason ? 'ready' : 'blocked', reason: !config.enabled ? 'Koneksi belum diaktifkan' : quotaReason ?? (ready ? undefined : 'Uji kemampuan belum lulus') };
   });
 }
 export async function provider(id: string) { const [row] = await db.select().from(schema.providers).where(eq(schema.providers.id, id)); if (!row) throw new Error('Provider tidak ditemukan'); return row; }
@@ -28,7 +33,10 @@ export async function reserveInvocation(p: StoredProvider, role: string, mode: M
   const reserve = internal ? d(0) : d(inputBound).mul(c.inputPricePerMillion!).plus(d(probe ? 128 : c.maxOutputTokens).mul(c.outputPricePerMillion!)).div(1_000_000).mul(probe ? 1 : c.retries + 1);
   consumeToolBudget(reserve.toFixed());
   const { settings } = await readSettings();
-  return transaction(async client => {
+  const waitingSince = Date.now();
+  for (;;) {
+    toolBudget.getStore()?.signal.throwIfAborted();
+    try { return await transaction(async client => {
     await client.query('SELECT id FROM providers WHERE id=$1 FOR UPDATE', [p.id]);
     const current = (await client.query('SELECT version FROM providers WHERE id=$1', [p.id])).rows[0];
     if (!current || current.version !== p.version) throw new Error('Konfigurasi provider berubah');
@@ -41,12 +49,23 @@ export async function reserveInvocation(p: StoredProvider, role: string, mode: M
     }
     const budget = (await client.query("SELECT coalesce(sum(coalesce(cost,reserved_cost)) FILTER(WHERE created_at>=date_trunc('day',now())),0)::text daily,coalesce(sum(coalesce(cost,reserved_cost)) FILTER(WHERE created_at>=date_trunc('month',now())),0)::text monthly,count(*) FILTER(WHERE status='running')::int active,count(*) FILTER(WHERE created_at>now()-interval '1 minute')::int rpm,count(*) FILTER(WHERE created_at>=date_trunc('day',now()))::int calls_day,count(*) FILTER(WHERE created_at>=date_trunc('month',now()))::int calls_month FROM invocations WHERE provider_id=$1", [p.id])).rows[0];
     if (budget.calls_day >= c.callsPerDay || budget.calls_month >= c.callsPerMonth) throw new Error('Kuota pemanggilan harian atau bulanan tercapai');
+    if (c.minimumCallIntervalMs > 0) {
+      const last = (await client.query('SELECT created_at FROM invocations WHERE provider_id=$1 ORDER BY created_at DESC LIMIT 1', [p.id])).rows[0]?.created_at as Date | undefined;
+      const remaining = last ? last.getTime() + c.minimumCallIntervalMs - Date.now() : 0;
+      if (remaining > 0) throw new InvocationDelay(remaining);
+    }
     if (!internal && (d(c.dailyBudgetUsd).lte(0) || d(c.monthlyBudgetUsd).lte(0) || d(budget.daily).plus(reserve).gt(c.dailyBudgetUsd) || d(budget.monthly).plus(reserve).gt(c.monthlyBudgetUsd))) throw new Error('Anggaran provider tidak cukup untuk reservasi biaya maksimum');
     if (budget.active >= c.concurrency) throw new Error('Batas concurrency provider tercapai');
     if (budget.rpm >= c.callsPerMinute) throw new Error('Batas pemanggilan per menit tercapai');
     const inserted = await client.query("INSERT INTO invocations(provider_id,provider_version,model,role,mode,status,reserved_cost,cost_status) VALUES($1,$2,$3,$4,$5,'running',$6,$7) RETURNING id", [p.id, p.version, c.model, role, mode, reserve.toFixed(), internal ? 'internal-quota' : 'reserved']);
     return { id: inserted.rows[0].id as string, providerId: p.id, reserved: reserve.toFixed(), config: c, mode };
-  });
+    }); } catch (error) {
+      if (!(error instanceof InvocationDelay)) throw error;
+      const remaining = c.timeoutMs - (Date.now() - waitingSince);
+      if (remaining <= error.milliseconds) throw new Error('Antrean pemanggilan AI melewati batas waktu', { cause: error });
+      await delay(error.milliseconds, undefined, { signal: toolBudget.getStore()?.signal ?? AbortSignal.timeout(remaining) });
+    }
+  }
 }
 export async function finishInvocation(ticket: Awaited<ReturnType<typeof reserveInvocation>>, usage: Usage | null, latencyMs: number, error?: string) {
   const validCount = (value: number | undefined): value is number => typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 && value <= 2_147_483_647;
@@ -88,7 +107,7 @@ export async function probe(id: string) {
   } catch (error) {
     await db.update(schema.providers).set({ capabilities: null }).where(sameVersion);
     await audit('supervisor', 'Uji koneksi AI dihentikan', 'Readiness sebelumnya dibatalkan; reservasi biaya atau pencatatan invocation tidak selesai', 'warning');
-    const safeReasons = new Set(['Harga input/output token wajib diisi untuk membatasi biaya','Konfigurasi provider berubah','Anggaran provider tidak cukup untuk reservasi biaya maksimum','Batas concurrency provider tercapai','Batas pemanggilan per menit tercapai','Kuota pemanggilan harian atau bulanan tercapai','Agent cost budget exceeded']);
+    const safeReasons = new Set(['Harga input/output token wajib diisi untuk membatasi biaya','Konfigurasi provider berubah','Anggaran provider tidak cukup untuk reservasi biaya maksimum','Batas concurrency provider tercapai','Batas pemanggilan per menit tercapai','Kuota pemanggilan harian atau bulanan tercapai','Antrean pemanggilan AI melewati batas waktu','Agent cost budget exceeded']);
     if (error instanceof Error && safeReasons.has(error.message)) {
       // Only fixed locally generated errors can cross this boundary.
       // eslint-disable-next-line preserve-caught-error
@@ -141,7 +160,7 @@ export async function forecast(market: Market, evidence: Evidence[], mode: Mode,
     try { ticket = await reserveInvocation(p, 'forecast', mode); } catch { continue; }
     const start = Date.now();
     let result: Awaited<ReturnType<typeof runForecast>>;
-    try { result = await runForecast({ ...p.config, retries: 0 }, ProviderSecretsSchema.parse(JSON.parse(decryptSecret(p.secrets))), { market, evidence }); }
+    try { await beforeCall?.(); result = await runForecast({ ...p.config, retries: 0 }, ProviderSecretsSchema.parse(JSON.parse(decryptSecret(p.secrets))), { market, evidence }); }
     catch {
       await finishInvocation(ticket, null, Date.now() - start, 'Forecast failed; usage uncertain');
       await audit('forecast', 'AI forecast failed', `${p.config.name}: call failed`, 'warning');
@@ -166,7 +185,7 @@ export async function planResearch(market: Market, evidence: Evidence[], mode: M
     try { ticket = await reserveInvocation(p, 'research', mode); } catch { continue; }
     const started = Date.now();
     let result: Awaited<ReturnType<typeof runResearchPlan>>;
-    try { result = await runResearchPlan({ ...p.config, retries: 0 }, ProviderSecretsSchema.parse(JSON.parse(decryptSecret(p.secrets))), { market, evidence }); }
+    try { await beforeCall?.(); result = await runResearchPlan({ ...p.config, retries: 0 }, ProviderSecretsSchema.parse(JSON.parse(decryptSecret(p.secrets))), { market, evidence }); }
     catch { await finishInvocation(ticket, null, Date.now()-started, 'Research planner failed; usage uncertain'); continue; }
     await finishInvocation(ticket, result.usage, result.latencyMs);
     return result.plan;
@@ -181,7 +200,7 @@ export async function analyze(role: 'research' | 'evidence' | 'summary', market:
     try { ticket = await reserveInvocation(p, role, mode); } catch { continue; }
     const started = Date.now();
     let result: Awaited<ReturnType<typeof runEvidenceAnalysis>>;
-    try { result = await runEvidenceAnalysis({ ...p.config, retries: 0 }, ProviderSecretsSchema.parse(JSON.parse(decryptSecret(p.secrets))), { role, question: market.question + '\n' + market.description + '\nResolution authority: ' + market.resolutionSource, evidence, forecast: validForecast }); }
+    try { await beforeCall?.(); result = await runEvidenceAnalysis({ ...p.config, retries: 0 }, ProviderSecretsSchema.parse(JSON.parse(decryptSecret(p.secrets))), { role, question: market.question + '\n' + market.description + '\nResolution authority: ' + market.resolutionSource, evidence, forecast: validForecast }); }
     catch { await finishInvocation(ticket, null, Date.now() - started, 'Analysis failed'); continue; }
     await finishInvocation(ticket, result.usage, result.latencyMs);
     return result.analysis;

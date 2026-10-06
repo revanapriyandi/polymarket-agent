@@ -93,6 +93,7 @@ export const settingsGuides: Record<SettingsTab, SettingsGuide> = {
         field('timeoutMs', 'Batas waktu permintaan, 3000–120000 ms. Timeout tidak membuktikan permintaan belum ditagihkan.', '30000 = 30 detik'),
         field('maxOutputTokens', 'Batas token jawaban, 64–32000. Terlalu rendah dapat memotong output terstruktur.', '2000'),
         field('concurrency', 'Jumlah panggilan bersamaan, 1–8. Mulai dari kapasitas yang didukung akun/provider.', '1'),
+        field('minimumCallIntervalMs', 'Jeda minimum sebelum dispatch berikutnya, 0–60000 ms. Riwayat database mempertahankannya setelah restart. Permintaan yang menunggu tetap dibatasi timeout dan deadline agent; tidak menambah panggilan atau menghapus kuota.', '35000 = 35 detik untuk upstream gratis yang membatasi burst'),
         field('callsPerMinute', 'Batas panggilan aplikasi untuk provider ini, 1–120 per menit. Rate limit penyedia tetap berlaku.', '10'),
         field('retries', 'Cadangan biaya retry, 0–2. Versi ini menonaktifkan retry otomatis pada SDK; angka ini memperbesar reservasi, bukan menjamin pengiriman ulang.', '0'),
       ] },

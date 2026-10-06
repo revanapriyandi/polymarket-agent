@@ -13,6 +13,7 @@ export const settingLabels: Record<string, string> = {
   timeoutMs: 'Batas waktu (ms)', maxOutputTokens: 'Token output maksimum', concurrency: 'Panggilan bersamaan',
   retries: 'Cadangan biaya retry', callsPerMinute: 'Batas panggilan per menit', dailyBudgetUsd: 'Budget harian (USD)',
   callsPerDay: 'Batas panggilan per hari', callsPerMonth: 'Batas panggilan per bulan',
+  minimumCallIntervalMs: 'Jeda minimum antarpanggilan (ms)',
   monthlyBudgetUsd: 'Budget bulanan (USD)', inputPricePerMillion: 'Harga input per 1 juta token (USD)', outputPricePerMillion: 'Harga output per 1 juta token (USD)',
   arbitrage: 'Strategi arbitrase', prediction: 'Strategi prediksi',
 };
