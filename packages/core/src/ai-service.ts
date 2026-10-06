@@ -1,7 +1,7 @@
 import { and, eq } from 'drizzle-orm';
 import { db, pool, schema, transaction } from '../../db/src/index.js';
 import { decryptSecret, encryptSecret, discoverModels, runCapabilityProbe, runForecast, runEvidenceAnalysis, runResearchPlan, estimateInputTokenUpperBound, type Usage } from '../../ai/src/index.js';
-import { ProviderSecretsSchema, type Capabilities, type ProviderView, type Mode, type Market, type Evidence, type Forecast } from '../../shared/src/index.js';
+import { ProviderConfigSchema, ProviderSecretsSchema, type Capabilities, type ProviderView, type Mode, type Market, type Evidence, type Forecast } from '../../shared/src/index.js';
 import { d, postJournal } from './ledger.js';
 import { readSettings, audit } from './state.js';
 import { consumeToolBudget } from './tool-budget.js';
@@ -11,21 +11,21 @@ type StoredProvider = typeof schema.providers.$inferSelect;
 export { encryptSecret };
 export async function providerViews(): Promise<ProviderView[]> {
   const rows = await db.select().from(schema.providers);
-  const spent = (await pool.query("SELECT provider_id,sum(coalesce(cost,reserved_cost)) FILTER(WHERE created_at>=date_trunc('day',now()))::text daily,sum(coalesce(cost,reserved_cost)) FILTER(WHERE created_at>=date_trunc('month',now()))::text monthly FROM invocations GROUP BY provider_id")).rows;
+  const spent = (await pool.query("SELECT provider_id,sum(coalesce(cost,reserved_cost)) FILTER(WHERE created_at>=date_trunc('day',now()))::text daily,sum(coalesce(cost,reserved_cost)) FILTER(WHERE created_at>=date_trunc('month',now()))::text monthly,count(*) FILTER(WHERE created_at>=date_trunc('day',now()))::int calls_day,count(*) FILTER(WHERE created_at>=date_trunc('month',now()))::int calls_month FROM invocations GROUP BY provider_id")).rows;
   return rows.map(p => {
     const amount = spent.find(v => v.provider_id === p.id);
     const tested = p.capabilities ? Date.parse(p.capabilities.testedAt) : NaN;
     const ready = p.capabilities?.text && p.capabilities.structured && p.capabilities.usage && Number.isFinite(tested) && tested <= Date.now() && Date.now() - tested <= 30 * 86400000;
     const secret = ProviderSecretsSchema.parse(JSON.parse(decryptSecret(p.secrets)));
-    return { ...p.config, id: p.id, version: p.version, hasSecret: !!secret.apiKey || Object.keys(secret.headers).length > 0, capabilities: p.capabilities, spentTodayUsd: amount?.daily ?? '0', spentMonthUsd: amount?.monthly ?? '0', status: !p.config.enabled ? 'unconfigured' : ready ? 'ready' : 'blocked', reason: !p.config.enabled ? 'Koneksi belum diaktifkan' : ready ? undefined : 'Uji kemampuan belum lulus' };
+    return { ...ProviderConfigSchema.parse(p.config), id: p.id, version: p.version, hasSecret: !!secret.apiKey || Object.keys(secret.headers).length > 0, capabilities: p.capabilities, spentTodayUsd: amount?.daily ?? '0', spentMonthUsd: amount?.monthly ?? '0', callsToday: amount?.calls_day ?? 0, callsMonth: amount?.calls_month ?? 0, status: !p.config.enabled ? 'unconfigured' : ready ? 'ready' : 'blocked', reason: !p.config.enabled ? 'Koneksi belum diaktifkan' : ready ? undefined : 'Uji kemampuan belum lulus' };
   });
 }
 export async function provider(id: string) { const [row] = await db.select().from(schema.providers).where(eq(schema.providers.id, id)); if (!row) throw new Error('Provider tidak ditemukan'); return row; }
 export async function reserveInvocation(p: StoredProvider, role: string, mode: Mode, probe = false) {
-  const c = p.config;
-  if (c.inputPricePerMillion === undefined || c.outputPricePerMillion === undefined) throw new Error('Harga input/output token wajib diisi untuk membatasi biaya');
+  const c = ProviderConfigSchema.parse(p.config), internal = c.billingMode === 'internal-quota';
+  if (!internal && (c.inputPricePerMillion === undefined || c.outputPricePerMillion === undefined)) throw new Error('Harga input/output token wajib diisi untuk membatasi biaya');
   const inputBound = probe ? 4096 : estimateInputTokenUpperBound();
-  const reserve = d(inputBound).mul(c.inputPricePerMillion).plus(d(probe ? 128 : c.maxOutputTokens).mul(c.outputPricePerMillion)).div(1_000_000).mul(probe ? 1 : c.retries + 1);
+  const reserve = internal ? d(0) : d(inputBound).mul(c.inputPricePerMillion!).plus(d(probe ? 128 : c.maxOutputTokens).mul(c.outputPricePerMillion!)).div(1_000_000).mul(probe ? 1 : c.retries + 1);
   consumeToolBudget(reserve.toFixed());
   const { settings } = await readSettings();
   return transaction(async client => {
@@ -33,28 +33,33 @@ export async function reserveInvocation(p: StoredProvider, role: string, mode: M
     const current = (await client.query('SELECT version FROM providers WHERE id=$1', [p.id])).rows[0];
     if (!current || current.version !== p.version) throw new Error('Konfigurasi provider berubah');
     // All provider calls time out within 120 seconds; ten minutes also covers retry/DNS overhead.
-    const abandoned = await client.query("UPDATE invocations SET status='failed',cost_status='unknown-reserved',error='Worker interrupted; maximum reservation retained',completed_at=now() WHERE provider_id=$1 AND status='running' AND created_at<now()-interval '10 minutes' RETURNING id,mode,reserved_cost", [p.id]);
+    const abandoned = await client.query("UPDATE invocations SET status='failed',cost_status=CASE WHEN cost_status='internal-quota' THEN 'internal-quota' ELSE 'unknown-reserved' END,error='Worker interrupted; reservation or internal call quota retained',completed_at=now() WHERE provider_id=$1 AND status='running' AND created_at<now()-interval '10 minutes' RETURNING id,mode,reserved_cost,cost_status", [p.id]);
     for (const invocation of abandoned.rows) {
+      if (invocation.cost_status === 'internal-quota') continue;
       const amount = d(invocation.reserved_cost).mul(settings.serviceCostConversion);
       await postJournal(client, `service:${invocation.id}`, invocation.mode, 'operating-cost', 'Interrupted AI invocation: maximum reserved cost', [{ account: 'operating-cost', amount: amount.toFixed() }, { account: 'operating-payable', amount: amount.negated().toFixed() }], { invocationId: invocation.id, costUsd: invocation.reserved_cost, conversion: settings.serviceCostConversion, denomination: 'USD', valuation: 'estimated-pUSD' });
     }
-    const budget = (await client.query("SELECT coalesce(sum(coalesce(cost,reserved_cost)) FILTER(WHERE created_at>=date_trunc('day',now())),0)::text daily,coalesce(sum(coalesce(cost,reserved_cost)) FILTER(WHERE created_at>=date_trunc('month',now())),0)::text monthly,count(*) FILTER(WHERE status='running')::int active,count(*) FILTER(WHERE created_at>now()-interval '1 minute')::int rpm FROM invocations WHERE provider_id=$1", [p.id])).rows[0];
-    if (d(c.dailyBudgetUsd).lte(0) || d(c.monthlyBudgetUsd).lte(0) || d(budget.daily).plus(reserve).gt(c.dailyBudgetUsd) || d(budget.monthly).plus(reserve).gt(c.monthlyBudgetUsd)) throw new Error('Anggaran provider tidak cukup untuk reservasi biaya maksimum');
+    const budget = (await client.query("SELECT coalesce(sum(coalesce(cost,reserved_cost)) FILTER(WHERE created_at>=date_trunc('day',now())),0)::text daily,coalesce(sum(coalesce(cost,reserved_cost)) FILTER(WHERE created_at>=date_trunc('month',now())),0)::text monthly,count(*) FILTER(WHERE status='running')::int active,count(*) FILTER(WHERE created_at>now()-interval '1 minute')::int rpm,count(*) FILTER(WHERE created_at>=date_trunc('day',now()))::int calls_day,count(*) FILTER(WHERE created_at>=date_trunc('month',now()))::int calls_month FROM invocations WHERE provider_id=$1", [p.id])).rows[0];
+    if (budget.calls_day >= c.callsPerDay || budget.calls_month >= c.callsPerMonth) throw new Error('Kuota pemanggilan harian atau bulanan tercapai');
+    if (!internal && (d(c.dailyBudgetUsd).lte(0) || d(c.monthlyBudgetUsd).lte(0) || d(budget.daily).plus(reserve).gt(c.dailyBudgetUsd) || d(budget.monthly).plus(reserve).gt(c.monthlyBudgetUsd))) throw new Error('Anggaran provider tidak cukup untuk reservasi biaya maksimum');
     if (budget.active >= c.concurrency) throw new Error('Batas concurrency provider tercapai');
     if (budget.rpm >= c.callsPerMinute) throw new Error('Batas pemanggilan per menit tercapai');
-    const inserted = await client.query("INSERT INTO invocations(provider_id,provider_version,model,role,mode,status,reserved_cost,cost_status) VALUES($1,$2,$3,$4,$5,'running',$6,'reserved') RETURNING id", [p.id, p.version, c.model, role, mode, reserve.toFixed()]);
+    const inserted = await client.query("INSERT INTO invocations(provider_id,provider_version,model,role,mode,status,reserved_cost,cost_status) VALUES($1,$2,$3,$4,$5,'running',$6,$7) RETURNING id", [p.id, p.version, c.model, role, mode, reserve.toFixed(), internal ? 'internal-quota' : 'reserved']);
     return { id: inserted.rows[0].id as string, providerId: p.id, reserved: reserve.toFixed(), config: c, mode };
   });
 }
 export async function finishInvocation(ticket: Awaited<ReturnType<typeof reserveInvocation>>, usage: Usage | null, latencyMs: number, error?: string) {
   const validCount = (value: number | undefined): value is number => typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 && value <= 2_147_483_647;
   const known = validCount(usage?.inputTokens) && validCount(usage?.outputTokens);
-  const cost = known ? d(usage!.inputTokens!).mul(ticket.config.inputPricePerMillion!).plus(d(usage!.outputTokens!).mul(ticket.config.outputPricePerMillion!)).div(1_000_000).toFixed() : null;
+  const internal = ticket.config.billingMode === 'internal-quota';
+  const cost = known && !internal ? d(usage!.inputTokens!).mul(ticket.config.inputPricePerMillion!).plus(d(usage!.outputTokens!).mul(ticket.config.outputPricePerMillion!)).div(1_000_000).toFixed() : null;
   const { settings } = await readSettings();
   await transaction(async client => {
     const row = (await client.query('SELECT cost,reserved_cost,completed_at FROM invocations WHERE id=$1 FOR UPDATE', [ticket.id])).rows[0];
     if (!row) throw new Error('Invocation record missing');
-    if (!row.completed_at) await client.query("UPDATE invocations SET status=$1,cost=$2,cost_status=$3,input_tokens=$4,output_tokens=$5,latency_ms=$6,error=$7,completed_at=now() WHERE id=$8", [error ? 'failed' : 'complete', cost, known ? 'estimated' : 'unknown-reserved', known ? usage!.inputTokens : null, known ? usage!.outputTokens : null, Math.min(2_147_483_647, Math.max(0, Math.round(latencyMs))), error ?? null, ticket.id]);
+    if (!row.completed_at) await client.query("UPDATE invocations SET status=$1,cost=$2,cost_status=$3,input_tokens=$4,output_tokens=$5,latency_ms=$6,error=$7,completed_at=now() WHERE id=$8", [error ? 'failed' : 'complete', cost, internal ? 'internal-quota' : known ? 'estimated' : 'unknown-reserved', known ? usage!.inputTokens : null, known ? usage!.outputTokens : null, Math.min(2_147_483_647, Math.max(0, Math.round(latencyMs))), error ?? null, ticket.id]);
+    // An internal gateway does not report its upstream bill. Keep usage, never invent a zero-cost journal.
+    if (internal) return;
     const billed = row.completed_at ? row.cost ?? row.reserved_cost : cost ?? ticket.reserved;
     const amount = d(billed).mul(settings.serviceCostConversion);
     await postJournal(client, `service:${ticket.id}`, ticket.mode, 'operating-cost', known ? 'AI token usage estimated cost' : 'AI uncertain usage: maximum reserved cost', [{ account: 'operating-cost', amount: amount.toFixed() }, { account: 'operating-payable', amount: amount.negated().toFixed() }], { invocationId: ticket.id, costUsd: billed, conversion: settings.serviceCostConversion, denomination: 'USD', valuation: 'estimated-pUSD' });
@@ -83,7 +88,7 @@ export async function probe(id: string) {
   } catch (error) {
     await db.update(schema.providers).set({ capabilities: null }).where(sameVersion);
     await audit('supervisor', 'Uji koneksi AI dihentikan', 'Readiness sebelumnya dibatalkan; reservasi biaya atau pencatatan invocation tidak selesai', 'warning');
-    const safeReasons = new Set(['Harga input/output token wajib diisi untuk membatasi biaya','Konfigurasi provider berubah','Anggaran provider tidak cukup untuk reservasi biaya maksimum','Batas concurrency provider tercapai','Batas pemanggilan per menit tercapai','Agent cost budget exceeded']);
+    const safeReasons = new Set(['Harga input/output token wajib diisi untuk membatasi biaya','Konfigurasi provider berubah','Anggaran provider tidak cukup untuk reservasi biaya maksimum','Batas concurrency provider tercapai','Batas pemanggilan per menit tercapai','Kuota pemanggilan harian atau bulanan tercapai','Agent cost budget exceeded']);
     if (error instanceof Error && safeReasons.has(error.message)) {
       // Only fixed locally generated errors can cross this boundary.
       // eslint-disable-next-line preserve-caught-error

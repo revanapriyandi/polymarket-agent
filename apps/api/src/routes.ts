@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify';
+import { lossLimitReason } from '../../../packages/core/src/risk-limits.js';
 import { z } from 'zod';
 import { db, pool, schema, transaction } from '../../../packages/db/src/index.js';
 import { SettingsSchema, ProviderConfigSchema, ProviderSecretsSchema, AssignmentSchema, type Mode } from '../../../packages/shared/src/index.js';
@@ -106,7 +107,7 @@ export async function registerRoutes(app: FastifyInstance) {
     } else {
       if (action === 'resume') {
         const m = await metrics(control.mode as Mode, settings), limits = control.mode === 'paper' ? settings.paper : settings.live;
-        if (!limits || m.equity === null || m.totalPnl === null || d(m.dailyPnl).lte(d(limits.capital).mul(limits.dailyLoss).negated()) || d(m.drawdown).gte(limits.maxDrawdown)) throw new HttpError(409, 'Valuasi belum pasti atau batas kerugian tercapai; rekonsiliasi diperlukan sebelum resume');
+        if (!limits || m.equity === null || m.totalPnl === null || lossLimitReason(m, limits)) throw new HttpError(409, 'Valuasi belum pasti atau batas kerugian tercapai; rekonsiliasi diperlukan sebelum resume');
       }
       await pool.query('UPDATE controls SET state=$1,reason=$2,updated_at=now() WHERE id=1', [action === 'resume' ? 'running' : action === 'pause' ? 'paused' : 'emergency', `Tindakan pemilik: ${action}`]);
       if (action === 'emergency' || action === 'pause') await operationsQueue.add('cancel-open', { mode: control.mode }, { priority: 1 });

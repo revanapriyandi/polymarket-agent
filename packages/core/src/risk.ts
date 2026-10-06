@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { lossLimitReason } from './risk-limits.js';
 import { transaction } from '../../db/src/index.js';
 import { d, metrics } from './ledger.js';
 import { evaluate } from './evaluation.js';
@@ -45,8 +46,7 @@ export async function authorize(intents: OrderIntent[], market: Market, books: O
     else if (books.some(b => !Number.isFinite(Date.parse(b.observedAt))||Date.now() - Date.parse(b.observedAt) > (exit ? 10000 : ENTRY_BOOK_MAX_AGE_MS)||Date.parse(b.observedAt)>Date.now()+1000)) reason = 'Order book kadaluwarsa';
     else if (intents.some(i => Date.now() - Date.parse(i.createdAt) > 15_000)) reason = 'Usulan kadaluwarsa';
     else if ((current.unmarkedPositions > 0 || current.equity === null) && !exit) reason = 'Valuasi atau settlement posisi belum lengkap';
-    else if (!exit && d(current.dailyPnl).lte(d(risk.capital).mul(risk.dailyLoss).negated())) reason = 'Batas kerugian harian tercapai';
-    else if (!exit && d(current.drawdown).gte(risk.maxDrawdown)) reason = 'Batas drawdown tercapai';
+    else if (!exit && lossLimitReason(current, risk)) reason = lossLimitReason(current, risk)!;
     if (!reason && !exit) { const feed = await entryFeedGuard(intents.map(intent => intent.tokenId)); if (!feed.ready) reason = feed.reason; }
     if (reason.includes('tercapai')) await client.query("UPDATE controls SET state='risk-stopped',reason=$1,updated_at=now() WHERE id=1", [reason]);
     const total = intents.filter(i => i.side === 'BUY').reduce((s, i) => s.plus(i.maxCost), d(0));

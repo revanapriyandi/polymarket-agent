@@ -26,6 +26,7 @@ export const settingsGuides: Record<SettingsTab, SettingsGuide> = {
         field('eventExposure', 'Porsi modal maksimum untuk satu event, termasuk pasar terkait dalam event tersebut. Maksimal 0.25 dan tidak boleh melebihi exposure total.', '0.01 = 1% modal; pada modal 1000, batasnya 10 pUSD'),
         field('totalExposure', 'Porsi modal maksimum untuk seluruh exposure. Rentang 0–1; nilai 0 menghalangi entry baru.', '0.10 = 10% modal'),
         field('dailyLoss', 'Ambang rugi harian yang menghentikan pembukaan posisi. Rentang 0.001–0.25. Ambang ini bukan jaminan kerugian berhenti tepat pada nominal tersebut.', '0.01 = 1%'),
+        field('maxTotalLoss', 'Batas rugi kumulatif dalam pUSD dari modal yang dibukukan. Jika terisi, entry berhenti saat laba/rugi total menyentuh angka negatif tersebut; terpisah dari rugi harian dan drawdown. Penghentian tidak menjamin harga exit atau batas kerugian absolut saat pasar bergerak tajam.', '1 = maksimum rugi total 1 pUSD'),
         field('maxDrawdown', 'Batas penurunan equity dari puncaknya. Rentang 0.001–0.50. Penghentian akibat risiko tidak otomatis menghapus batas ini.', '0.05 = 5%'),
         { name: 'Konfigurasi profil live', description: 'Menyimpan profil live belum mengaktifkan transaksi uang nyata. Wallet, evaluasi strategi, persetujuan risiko dan konfigurasi server tetap diperiksa.' },
       ] },
@@ -81,6 +82,9 @@ export const settingsGuides: Record<SettingsTab, SettingsGuide> = {
         { name: 'Custom headers (JSON)', description: 'Objek JSON dengan nama dan nilai string. Gunakan hanya header tambahan yang diperlukan. Jangan isi Host, Cookie, Authorization, x-api-key, x-goog-api-key atau header proxy.', example: '{"x-tenant-id":"workspace-saya"}' },
       ] },
       { title: 'Anggaran dan batas pemanggilan', fields: [
+        { name: 'Perhitungan biaya', description: 'Tarif per token memakai reservasi biaya USD. Gateway internal memakai kuota panggilan tanpa mengarang tarif upstream. Pemakaian token tetap dicatat; biaya yang tidak dilaporkan belum termasuk laba bersih. Pemilik gateway tetap mengelola tagihan atau langganan upstream.' },
+        field('callsPerDay', 'Jumlah maksimum panggilan per hari UTC. Probe, discovery, permintaan gagal, dan timeout tetap menghabiskan kuota; restart worker tidak mengembalikannya.', '120'),
+        field('callsPerMonth', 'Jumlah maksimum panggilan per bulan UTC. Batas ini diperiksa bersama batas harian, concurrency, dan per menit sebelum mengirim permintaan.', '3000'),
         field('inputPricePerMillion', 'Harga USD untuk 1 juta token input menurut tarif model Anda. Wajib diisi untuk reservasi biaya. Isi 0 hanya jika benar-benar tidak ada biaya.'),
         field('outputPricePerMillion', 'Harga USD untuk 1 juta token output. Harga ini mengestimasi biaya; tagihan aktual tetap mengikuti penyedia.'),
         field('dailyBudgetUsd', 'Batas biaya harian untuk koneksi ini. Nilai 0 menghalangi permintaan yang membutuhkan biaya. Sistem mereservasi batas biaya sebelum memanggil model.'),

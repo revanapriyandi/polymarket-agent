@@ -8,11 +8,12 @@ import { redactSecrets } from '../../../packages/ai/src/security.js';
 import { storedMarket } from './markets.js';
 import { HttpError, stepUp } from './security.js';
 import { roles, type Mode } from '../../../packages/shared/src/index.js';
+import { readServiceConfig } from '../../../packages/services/src/settings.js';
 
 export async function registerResearch(app: FastifyInstance) {
   app.get('/api/research/:id', async req => {
     const { id } = z.object({ id: z.string().regex(/^\d+$/) }).parse(req.params);
-    const [market, control, {settings}] = await Promise.all([storedMarket(id),readControl(),readSettings()]);
+    const [market, control, {settings}, services] = await Promise.all([storedMarket(id),readControl(),readSettings(),readServiceConfig()]);
     const [evidence, forecasts, runs, ready] = await Promise.all([
       pool.query('SELECT id,payload,created_at FROM evidence WHERE market_id=$1 ORDER BY created_at DESC LIMIT 60',[id]),
       pool.query(`SELECT f.id,f.payload,f.baseline,f.outcome,f.provider_version,f.rules_hash,f.created_at,p.config->>'name' provider,
@@ -25,15 +26,16 @@ export async function registerResearch(app: FastifyInstance) {
     const reasons=[];
     if(!ready)reasons.push('Konfigurasikan dan uji model research, evidence, dan forecast.');
     if(!settings.strategyEnabled.prediction)reasons.push('Strategi prediksi belum diaktifkan.');
-    if(Number(settings.researchDailyBudgetUsd)<=0||Number(settings.researchMonthlyBudgetUsd)<=0)reasons.push('Isi anggaran riset harian dan bulanan.');
+    if(services.config.tavily.enabled && (Number(settings.researchDailyBudgetUsd)<=0||Number(settings.researchMonthlyBudgetUsd)<=0))reasons.push('Isi anggaran pencarian Tavily harian dan bulanan.');
     if(control.state!=='running')reasons.push('Operasi sedang dijeda.');
     return {market,evidence:evidence.rows,forecasts:forecasts.rows,runs:redactSecrets(runs.rows),canRequest:reasons.length===0,reasons,mode:control.mode};
   });
   app.post('/api/research/:id',async req=>{
     await stepUp(req);
     const {id}=z.object({id:z.string().regex(/^\d+$/)}).parse(req.params);
-    const [market,control,{settings}]=await Promise.all([storedMarket(id),readControl(),readSettings()]);
-    if(control.state!=='running'||!settings.strategyEnabled.prediction||!await researchReady(control.mode as Mode)||Number(settings.researchDailyBudgetUsd)<=0||Number(settings.researchMonthlyBudgetUsd)<=0)throw new HttpError(409,'Model, budget, strategi prediksi, dan operasi harus siap sebelum meminta riset');
+    const [market,control,{settings},services]=await Promise.all([storedMarket(id),readControl(),readSettings(),readServiceConfig()]);
+    const searchBudgetMissing = services.config.tavily.enabled && (Number(settings.researchDailyBudgetUsd)<=0||Number(settings.researchMonthlyBudgetUsd)<=0);
+    if(control.state!=='running'||!settings.strategyEnabled.prediction||!await researchReady(control.mode as Mode)||searchBudgetMissing)throw new HttpError(409,'Model, budget layanan aktif, strategi prediksi, dan operasi harus siap sebelum meminta riset');
     if(!market.acceptingOrders||market.closed||Date.parse(market.endDate)<=Date.now()+86400000)throw new HttpError(409,'Pasar berada di luar horizon riset strategi');
     const job=await researchQueue.add('research',{marketId:id,mode:control.mode},{jobId:`manual-research-${control.mode}-${id}-${Math.floor(Date.now()/1800000)}`});
     await audit('owner','Riset pasar diminta',market.question,'info',String(job.id));

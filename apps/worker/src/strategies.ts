@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { lossLimitReason } from '../../../packages/core/src/risk-limits.js';
 import { pool } from '../../../packages/db/src/index.js';
 import { readSettings, readControl, audit } from '../../../packages/core/src/state.js';
 import { d, metrics } from '../../../packages/core/src/ledger.js';
@@ -78,7 +79,7 @@ export async function recoverArbitrage(market: Market, mode: Mode, runtime: Runt
 export async function manageExits(mode: Mode, runtime: Runtime, marketId?:string) {
   const { settings, version } = await readSettings(), risk = mode === 'paper' ? settings.paper : settings.live; if (!risk) return;
   const m = await metrics(mode, settings);
-  const riskHit = d(m.dailyPnl).lte(d(risk.capital).mul(risk.dailyLoss).negated()) || d(m.drawdown).gte(risk.maxDrawdown);
+  const riskHit = lossLimitReason(m, risk) !== null;
   if (riskHit) {
     await pool.query("UPDATE controls SET state='risk-stopped',reason='Batas kerugian atau drawdown tercapai',updated_at=now() WHERE id=1 AND state!='emergency'");
     const pendingBuys = (await pool.query("SELECT id FROM orders WHERE mode=$1 AND intent->>'side'='BUY' AND status NOT IN ('filled','cancelled','rejected','expired')",[mode])).rows;

@@ -2,6 +2,7 @@ import type { ProviderConfig } from '../../../packages/shared/src/index';
 
 export const settingLabels: Record<string, string> = {
   capital: 'Modal (pUSD)', eventExposure: 'Exposure per event (rasio)', totalExposure: 'Exposure total (rasio)',
+  maxTotalLoss: 'Batas rugi total (pUSD)',
   dailyLoss: 'Batas rugi harian (rasio)', maxDrawdown: 'Batas drawdown (rasio)', minimumEdge: 'Edge minimum (rasio)',
   slippageBps: 'Slippage maksimum (bps)', maxRecoveryLoss: 'Biaya pemulihan maksimum (pUSD)', maxHoldingHours: 'Lama posisi maksimum (jam)',
   minimumLiquidity: 'Likuiditas minimum (pUSD)', minimumVolume: 'Volume minimum (pUSD)', mergeCost: 'Estimasi biaya merge (pUSD)',
@@ -11,6 +12,7 @@ export const settingLabels: Record<string, string> = {
   infrastructureDailyCostUsd: 'Biaya infrastruktur harian (USD)', serviceCostConversion: 'Konversi biaya (pUSD per USD)',
   timeoutMs: 'Batas waktu (ms)', maxOutputTokens: 'Token output maksimum', concurrency: 'Panggilan bersamaan',
   retries: 'Cadangan biaya retry', callsPerMinute: 'Batas panggilan per menit', dailyBudgetUsd: 'Budget harian (USD)',
+  callsPerDay: 'Batas panggilan per hari', callsPerMonth: 'Batas panggilan per bulan',
   monthlyBudgetUsd: 'Budget bulanan (USD)', inputPricePerMillion: 'Harga input per 1 juta token (USD)', outputPricePerMillion: 'Harga output per 1 juta token (USD)',
   arbitrage: 'Strategi arbitrase', prediction: 'Strategi prediksi',
 };

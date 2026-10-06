@@ -14,15 +14,18 @@ export const ProviderConfigSchema = z.object({
   name: z.string().min(1).max(80), protocol: ProviderProtocolSchema, endpoint: z.string().url().optional().or(z.literal('')), model: z.string().min(1).max(200), enabled: z.boolean().default(false),
   timeoutMs: z.number().int().min(3000).max(120000).default(30000), maxOutputTokens: z.number().int().min(64).max(32000).default(2000), concurrency: z.number().int().min(1).max(8).default(1), retries: z.number().int().min(0).max(2).default(0), callsPerMinute: z.number().int().min(1).max(120).default(10),
   dailyBudgetUsd: money.default('0'), monthlyBudgetUsd: money.default('0'), inputPricePerMillion: money.optional(), outputPricePerMillion: money.optional(),
+  billingMode: z.enum(['metered', 'internal-quota']).default('metered'),
+  callsPerDay: z.number().int().min(1).max(100000).default(300), callsPerMonth: z.number().int().min(1).max(3000000).default(9000),
 });
 export type ProviderConfig = z.infer<typeof ProviderConfigSchema>;
 export const ProviderSecretsSchema = z.object({ apiKey: z.string().max(4096).optional(), authHeader: z.string().max(100).optional(), headers: z.record(z.string(), z.string().max(4096)).default({}) });
 export type ProviderSecrets = z.infer<typeof ProviderSecretsSchema>;
 export interface Capabilities { text: boolean; tools: boolean; structured: boolean; usage: boolean; testedAt: string; errors: string[] }
-export interface ProviderView extends ProviderConfig { id: string; version: number; hasSecret: boolean; capabilities: Capabilities | null; spentTodayUsd: string; spentMonthUsd: string; status: 'unconfigured' | 'ready' | 'degraded' | 'blocked'; reason?: string }
+export interface ProviderView extends ProviderConfig { id: string; version: number; hasSecret: boolean; capabilities: Capabilities | null; spentTodayUsd: string; spentMonthUsd: string; callsToday: number; callsMonth: number; status: 'unconfigured' | 'ready' | 'degraded' | 'blocked'; reason?: string }
 export const AssignmentSchema = z.object({ role: z.enum(['research', 'forecast', 'evidence', 'summary']), primaryId: z.string().uuid(), fallbackEnabled: z.boolean().default(false), fallbackIds: z.array(z.string().uuid()).max(5).default([]) });
 export type ModelAssignment = z.infer<typeof AssignmentSchema>;
 export const RiskSettingsSchema = z.object({
+  maxTotalLoss: money.refine(value => Number(value) > 0, 'Batas rugi total harus positif').optional(),
   capital: money, eventExposure: ratio.max(0.25), totalExposure: ratio.max(1), dailyLoss: ratio.min(0.001).max(0.25), maxDrawdown: ratio.min(0.001).max(0.5), slippageBps: z.number().int().min(0).max(500), maxRecoveryLoss: money, maxHoldingHours: z.number().int().min(1).max(720), minimumEdge: ratio.min(0.01), minimumLiquidity: money, minimumVolume: money, mergeCost: money, arbitrageAllocation: ratio, predictionAllocation: ratio,
 }).refine(v => v.eventExposure <= v.totalExposure, 'Exposure event harus di bawah exposure total').refine(v => v.arbitrageAllocation + v.predictionAllocation <= 1, 'Total alokasi maksimal 100%');
 export type RiskSettings = z.infer<typeof RiskSettingsSchema>;
