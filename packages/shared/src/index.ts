@@ -15,6 +15,7 @@ export const ProviderConfigSchema = z.object({
   timeoutMs: z.number().int().min(3000).max(120000).default(30000), maxOutputTokens: z.number().int().min(64).max(32000).default(2000), concurrency: z.number().int().min(1).max(8).default(1), retries: z.number().int().min(0).max(2).default(0), callsPerMinute: z.number().int().min(1).max(120).default(10),
   dailyBudgetUsd: money.default('0'), monthlyBudgetUsd: money.default('0'), inputPricePerMillion: money.optional(), outputPricePerMillion: money.optional(),
   billingMode: z.enum(['metered', 'internal-quota']).default('metered'),
+  responseMode: z.enum(['json', 'sse']).default('json'),
   callsPerDay: z.number().int().min(1).max(100000).default(300), callsPerMonth: z.number().int().min(1).max(3000000).default(9000),
 });
 export type ProviderConfig = z.infer<typeof ProviderConfigSchema>;

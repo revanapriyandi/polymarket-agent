@@ -68,6 +68,7 @@ export const settingsGuides: Record<SettingsTab, SettingsGuide> = {
     ],
     sections: [
       { title: 'Identitas, protokol dan endpoint', fields: [
+        { name: 'Mode respons', description: 'JSON memakai jawaban lengkap. Streaming memakai Server-Sent Events melalui AI SDK. Pilih streaming jika gateway mengirim balasan bertahap. Output akhir, tools, usage, timeout, dan validasi server tetap diperiksa; perubahan mode perlu Probe ulang.' },
         { name: 'Nama', description: 'Nama koneksi untuk membedakan akun, gateway atau model. Tidak memengaruhi ID model yang dikirim ke API.', example: 'Riset utama' },
         { name: 'Protokol resmi', description: 'OpenAI: pilih Responses atau Chat Completions sesuai dukungan model. Anthropic menggunakan Messages; Google menggunakan Gemini. Endpoint resmi tidak dapat diganti ke gateway lain.' },
         { name: 'Custom · OpenAI Chat Completions', description: 'Isi base URL tanpa akhiran /chat/completions. Server harus mendukung Chat Completions.', example: 'https://gateway.example/v1' },

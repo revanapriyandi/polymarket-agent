@@ -6,6 +6,10 @@ const priceFields = ['dailyBudgetUsd', 'monthlyBudgetUsd', 'inputPricePerMillion
 
 export function ProviderUsageFields({ config, onChange }: { config: ProviderConfig; onChange: (config: ProviderConfig) => void }) {
   return <>
+    <label>Mode respons<select value={config.responseMode ?? 'json'} onChange={event => onChange({ ...config, responseMode: event.target.value as ProviderConfig['responseMode'] })}>
+      <option value="json">JSON · respons lengkap</option>
+      <option value="sse">Streaming · Server-Sent Events</option>
+    </select><small>Pilih streaming jika gateway mengirim balasan bertahap. Output akhir tetap divalidasi.</small></label>
     <label>Perhitungan biaya<select value={config.billingMode ?? 'metered'} onChange={event => onChange({ ...config, billingMode: event.target.value as ProviderConfig['billingMode'] })}>
       <option value="metered">Tarif per token · anggaran USD</option>
       <option value="internal-quota">Gateway internal · kuota panggilan</option>
